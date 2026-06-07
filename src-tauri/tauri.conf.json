@@ -22,5 +22,50 @@
     "security": {
       "csp": null
     }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "dmg", "appimage", "deb"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/256x256.png",
+      "icons/icon.png"
+    ],
+    "createUpdaterArtifacts": true,
+    "copyright": "",
+    "category": "Productivity",
+    "shortDescription": "书昀笔记电子书 — 面向技术写作者的桌面笔记应用",
+    "longDescription": "书昀笔记电子书提供 workspace 级知识管理、Typora 级 Markdown 编辑、白板画图、一键导出。",
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
+      "nsis": {
+        "displayLanguageSelector": true,
+        "languages": ["SimpChinese", "English"],
+        "installMode": "both"
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.13",
+      "signingIdentity": null
+    },
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": false
+      },
+      "deb": {
+        "depends": []
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg2M0IyOTYzRjRCRkU4MDQKUldRRTZMLzBZeWs3aGlCc0dvTnNZWVM4ZW10VkpvVXd0UktiUFlNM2Fyei9WUTJkOWc3aitac2oK",
+      "endpoints": [
+        "https://github.com/luzhipeng-git/sy-note-books/releases/latest/download/{{target}}-{{arch}}.json"
+      ]
+    }
   }
 }
