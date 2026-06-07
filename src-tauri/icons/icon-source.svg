@@ -1,129 +1,101 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
   <defs>
-    <!-- 背景渐变 -->
-    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#5C6BC0"/>
       <stop offset="100%" style="stop-color:#7E57C2"/>
     </linearGradient>
-    <!-- 书本左页渐变 -->
-    <linearGradient id="leftPage" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="leftPage" x1="0%" y1="0%" x2="0%" y2="100%">
       <stop offset="0%" style="stop-color:#FFFFFF"/>
       <stop offset="100%" style="stop-color:#F5F5F5"/>
     </linearGradient>
-    <!-- 书本右页渐变 -->
-    <linearGradient id="rightPage" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="rightPage" x1="0%" y1="0%" x2="0%" y2="100%">
       <stop offset="0%" style="stop-color:#FFFFFF"/>
       <stop offset="100%" style="stop-color:#FAFAFA"/>
     </linearGradient>
-    <!-- 书脊渐变 -->
-    <linearGradient id="spineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" style="stop-color:#E0E0E0"/>
-      <stop offset="50%" style="stop-color:#BDBDBD"/>
-      <stop offset="100%" style="stop-color:#E0E0E0"/>
-    </linearGradient>
-    <!-- 太阳光芒 -->
-    <radialGradient id="sunGlow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" style="stop-color:#FFF176;stop-opacity:0.6"/>
-      <stop offset="100%" style="stop-color:#FFF176;stop-opacity:0"/>
-    </radialGradient>
-    <!-- 阴影 -->
-    <filter id="bookShadow" x="-15%" y="-10%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="12" stdDeviation="20" flood-color="#1A237E" flood-opacity="0.35"/>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="10" stdDeviation="18" flood-color="#1A237E" flood-opacity="0.3"/>
     </filter>
-    <filter id="sunGlowFilter" x="-50%" y="-50%" width="200%" height="200%">
-      <feDropShadow dx="0" dy="0" stdDeviation="8" flood-color="#FFB300" flood-opacity="0.7"/>
+    <filter id="glow">
+      <feDropShadow dx="0" dy="0" stdDeviation="10" flood-color="#FFB300" flood-opacity="0.6"/>
     </filter>
   </defs>
 
-  <!-- 圆角矩形背景 -->
-  <rect x="0" y="0" width="1024" height="1024" rx="200" ry="200" fill="url(#bgGrad)"/>
+  <!-- 背景 -->
+  <rect x="0" y="0" width="1024" height="1024" rx="200" ry="200" fill="url(#bg)"/>
 
-  <!-- 晨光光晕（右上角） -->
-  <circle cx="820" cy="180" r="200" fill="url(#sunGlow)"/>
+  <!-- 太阳光晕（右上角，昀=日光） -->
+  <g filter="url(#glow)" transform="translate(810, 170)">
+    <circle cx="0" cy="0" r="50" fill="#FFD54F"/>
+    <circle cx="0" cy="0" r="35" fill="#FFEE58"/>
+    <line x1="0" y1="-68" x2="0" y2="-88" stroke="#FFD54F" stroke-width="9" stroke-linecap="round"/>
+    <line x1="48" y1="-48" x2="62" y2="-62" stroke="#FFD54F" stroke-width="9" stroke-linecap="round"/>
+    <line x1="68" y1="0" x2="88" y2="0" stroke="#FFD54F" stroke-width="9" stroke-linecap="round"/>
+    <line x1="48" y1="48" x2="62" y2="62" stroke="#FFD54F" stroke-width="7" stroke-linecap="round" opacity="0.6"/>
+    <line x1="-48" y1="-48" x2="-62" y2="-62" stroke="#FFD54F" stroke-width="7" stroke-linecap="round" opacity="0.4"/>
+    <line x1="-68" y1="0" x2="-88" y2="0" stroke="#FFD54F" stroke-width="7" stroke-linecap="round" opacity="0.4"/>
+  </g>
 
-  <!-- 书本整体（加大尺寸，居中偏下） -->
-  <g filter="url(#bookShadow)" transform="translate(512, 530)">
-
-    <!-- 左页（带翻页弧度） -->
-    <path d="M-10,-230 C-10,-230 -15,180 -15,180 Q-15,200 -40,200 L-270,200 Q-290,200 -290,180 L-290,-210 Q-290,-230 -270,-230 Z"
-          fill="url(#leftPage)" stroke="#E0E0E0" stroke-width="2"/>
-
-    <!-- 右页（带翻页弧度） -->
-    <path d="M10,-230 C10,-230 15,180 15,180 Q15,200 40,200 L270,200 Q290,200 290,180 L290,-210 Q290,-230 270,-230 Z"
-          fill="url(#rightPage)" stroke="#E0E0E0" stroke-width="2"/>
-
+  <!-- 书本主体（简化矩形） -->
+  <g filter="url(#shadow)">
+    <!-- 左页 -->
+    <rect x="120" y="240" width="370" height="500" rx="8" fill="url(#leftPage)" stroke="#E0E0E0" stroke-width="2"/>
+    <!-- 右页 -->
+    <rect x="534" y="240" width="370" height="500" rx="8" fill="url(#rightPage)" stroke="#E0E0E0" stroke-width="2"/>
     <!-- 书脊 -->
-    <path d="M-10,-230 C0,-210 10,-230 10,-230 L10,180 C0,200 -10,180 -10,180 Z"
-          fill="url(#spineGrad)" stroke="#BDBDBD" stroke-width="1"/>
-
-    <!-- ========== 左页内容：文字行 ========== -->
-    <!-- 标题行 -->
-    <rect x="-265" y="-190" width="200" height="14" rx="7" fill="#7986CB" opacity="0.8"/>
-    <!-- 正文行 -->
-    <rect x="-265" y="-155" width="230" height="10" rx="5" fill="#B0BEC5" opacity="0.6"/>
-    <rect x="-265" y="-128" width="190" height="10" rx="5" fill="#CFD8DC" opacity="0.5"/>
-    <rect x="-265" y="-101" width="220" height="10" rx="5" fill="#CFD8DC" opacity="0.5"/>
-    <rect x="-265" y="-74" width="170" height="10" rx="5" fill="#CFD8DC" opacity="0.5"/>
-    <!-- 第二段标题 -->
-    <rect x="-265" y="-40" width="160" height="12" rx="6" fill="#9575CD" opacity="0.7"/>
-    <!-- 正文行 -->
-    <rect x="-265" y="-12" width="230" height="10" rx="5" fill="#B0BEC5" opacity="0.6"/>
-    <rect x="-265" y="15" width="200" height="10" rx="5" fill="#CFD8DC" opacity="0.5"/>
-    <rect x="-265" y="42" width="240" height="10" rx="5" fill="#CFD8DC" opacity="0.5"/>
-    <rect x="-265" y="69" width="180" height="10" rx="5" fill="#CFD8DC" opacity="0.5"/>
-    <rect x="-265" y="96" width="210" height="10" rx="5" fill="#CFD8DC" opacity="0.5"/>
-    <rect x="-265" y="123" width="160" height="10" rx="5" fill="#CFD8DC" opacity="0.5"/>
-    <rect x="-265" y="150" width="230" height="10" rx="5" fill="#CFD8DC" opacity="0.5"/>
-
-    <!-- ========== 右页内容：代码块 + 文字 ========== -->
-    <!-- 代码块背景 -->
-    <rect x="40" y="-195" width="225" height="145" rx="10" fill="#E8EAF6" stroke="#C5CAE9" stroke-width="2"/>
-    <!-- 代码行号区域 -->
-    <rect x="40" y="-195" width="35" height="145" rx="10" fill="#C5CAE9" opacity="0.5"/>
-    <!-- 代码行号 -->
-    <rect x="50" y="-175" width="15" height="6" rx="3" fill="#9FA8DA" opacity="0.6"/>
-    <rect x="50" y="-145" width="15" height="6" rx="3" fill="#9FA8DA" opacity="0.6"/>
-    <rect x="50" y="-115" width="15" height="6" rx="3" fill="#9FA8DA" opacity="0.6"/>
-    <rect x="50" y="-85" width="15" height="6" rx="3" fill="#9FA8DA" opacity="0.6"/>
-    <rect x="50" y="-55" width="15" height="6" rx="3" fill="#9FA8DA" opacity="0.6"/>
-    <!-- 代码内容 -->
-    <!-- # heading（紫色） -->
-    <rect x="85" y="-178" width="50" height="8" rx="4" fill="#7E57C2" opacity="0.8"/>
-    <rect x="140" y="-178" width="90" height="8" rx="4" fill="#9FA8DA" opacity="0.5"/>
-    <!-- 函数定义（蓝色） -->
-    <rect x="85" y="-148" width="40" height="8" rx="4" fill="#42A5F5" opacity="0.8"/>
-    <rect x="130" y="-148" width="80" height="8" rx="4" fill="#90CAF9" opacity="0.5"/>
-    <!-- 字符串（绿色） -->
-    <rect x="100" y="-118" width="120" height="8" rx="4" fill="#66BB6A" opacity="0.8"/>
-    <!-- 返回值（橙色） -->
-    <rect x="85" y="-88" width="60" height="8" rx="4" fill="#FFA726" opacity="0.8"/>
-    <rect x="150" y="-88" width="70" height="8" rx="4" fill="#90CAF9" opacity="0.5"/>
-    <!-- 注释（灰色） -->
-    <rect x="85" y="-58" width="100" height="8" rx="4" fill="#BDBDBD" opacity="0.6"/>
-
-    <!-- 右页下方文字行 -->
-    <rect x="40" y="-20" width="230" height="10" rx="5" fill="#B0BEC5" opacity="0.6"/>
-    <rect x="40" y="7" width="200" height="10" rx="5" fill="#CFD8DC" opacity="0.5"/>
-    <rect x="40" y="34" width="220" height="10" rx="5" fill="#CFD8DC" opacity="0.5"/>
-    <rect x="40" y="61" width="180" height="10" rx="5" fill="#CFD8DC" opacity="0.5"/>
-    <rect x="40" y="88" width="240" height="10" rx="5" fill="#CFD8DC" opacity="0.5"/>
-    <rect x="40" y="115" width="190" height="10" rx="5" fill="#CFD8DC" opacity="0.5"/>
-    <rect x="40" y="142" width="210" height="10" rx="5" fill="#CFD8DC" opacity="0.5"/>
-    <rect x="40" y="169" width="160" height="10" rx="5" fill="#CFD8DC" opacity="0.5"/>
+    <rect x="490" y="240" width="44" height="500" fill="#E8EAF6" stroke="#C5CAE9" stroke-width="1"/>
   </g>
 
-  <!-- 太阳（右上角，昀=日光） -->
-  <g filter="url(#sunGlowFilter)" transform="translate(800, 180)">
-    <circle cx="0" cy="0" r="55" fill="#FFD54F"/>
-    <circle cx="0" cy="0" r="38" fill="#FFEE58"/>
-    <!-- 光芒 -->
-    <line x1="0" y1="-75" x2="0" y2="-98" stroke="#FFD54F" stroke-width="10" stroke-linecap="round"/>
-    <line x1="53" y1="-53" x2="69" y2="-69" stroke="#FFD54F" stroke-width="10" stroke-linecap="round"/>
-    <line x1="75" y1="0" x2="98" y2="0" stroke="#FFD54F" stroke-width="10" stroke-linecap="round"/>
-    <line x1="53" y1="53" x2="69" y2="69" stroke="#FFD54F" stroke-width="8" stroke-linecap="round" opacity="0.7"/>
-    <line x1="-53" y1="-53" x2="-69" y2="-69" stroke="#FFD54F" stroke-width="8" stroke-linecap="round" opacity="0.5"/>
-    <line x1="-75" y1="0" x2="-98" y2="0" stroke="#FFD54F" stroke-width="8" stroke-linecap="round" opacity="0.5"/>
-    <line x1="0" y1="75" x2="0" y2="98" stroke="#FFD54F" stroke-width="8" stroke-linecap="round" opacity="0.5"/>
-    <line x1="-53" y1="53" x2="-69" y2="69" stroke="#FFD54F" stroke-width="8" stroke-linecap="round" opacity="0.5"/>
-  </g>
+  <!-- 左页：文字行 -->
+  <rect x="148" y="275" width="180" height="13" rx="6" fill="#7986CB" opacity="0.8"/>
+  <rect x="148" y="308" width="310" height="9" rx="4" fill="#B0BEC5" opacity="0.6"/>
+  <rect x="148" y="332" width="270" height="9" rx="4" fill="#CFD8DC" opacity="0.5"/>
+  <rect x="148" y="356" width="300" height="9" rx="4" fill="#CFD8DC" opacity="0.5"/>
+  <rect x="148" y="380" width="240" height="9" rx="4" fill="#CFD8DC" opacity="0.5"/>
+  <rect x="148" y="416" width="150" height="11" rx="5" fill="#9575CD" opacity="0.7"/>
+  <rect x="148" y="444" width="310" height="9" rx="4" fill="#B0BEC5" opacity="0.6"/>
+  <rect x="148" y="468" width="280" height="9" rx="4" fill="#CFD8DC" opacity="0.5"/>
+  <rect x="148" y="492" width="320" height="9" rx="4" fill="#CFD8DC" opacity="0.5"/>
+  <rect x="148" y="516" width="250" height="9" rx="4" fill="#CFD8DC" opacity="0.5"/>
+  <rect x="148" y="540" width="290" height="9" rx="4" fill="#CFD8DC" opacity="0.5"/>
+  <rect x="148" y="564" width="200" height="9" rx="4" fill="#CFD8DC" opacity="0.5"/>
+  <rect x="148" y="588" width="310" height="9" rx="4" fill="#CFD8DC" opacity="0.5"/>
+  <rect x="148" y="612" width="260" height="9" rx="4" fill="#CFD8DC" opacity="0.5"/>
+  <rect x="148" y="636" width="300" height="9" rx="4" fill="#CFD8DC" opacity="0.5"/>
+  <rect x="148" y="660" width="230" height="9" rx="4" fill="#CFD8DC" opacity="0.5"/>
+  <rect x="148" y="684" width="280" height="9" rx="4" fill="#CFD8DC" opacity="0.5"/>
+
+  <!-- 右页：代码块 -->
+  <rect x="560" y="268" width="318" height="160" rx="10" fill="#E8EAF6" stroke="#C5CAE9" stroke-width="2"/>
+  <rect x="560" y="268" width="40" height="160" rx="10" fill="#C5CAE9" opacity="0.4"/>
+  <rect x="572" y="290" width="16" height="7" rx="3" fill="#9FA8DA" opacity="0.7"/>
+  <rect x="572" y="318" width="16" height="7" rx="3" fill="#9FA8DA" opacity="0.7"/>
+  <rect x="572" y="346" width="16" height="7" rx="3" fill="#9FA8DA" opacity="0.7"/>
+  <rect x="572" y="374" width="16" height="7" rx="3" fill="#9FA8DA" opacity="0.7"/>
+  <rect x="572" y="402" width="16" height="7" rx="3" fill="#9FA8DA" opacity="0.7"/>
+  <!-- 代码内容行 -->
+  <rect x="610" y="286" width="60" height="8" rx="4" fill="#7E57C2" opacity="0.8"/>
+  <rect x="676" y="286" width="100" height="8" rx="4" fill="#9FA8DA" opacity="0.5"/>
+  <rect x="610" y="314" width="50" height="8" rx="4" fill="#42A5F5" opacity="0.8"/>
+  <rect x="666" y="314" width="90" height="8" rx="4" fill="#90CAF9" opacity="0.5"/>
+  <rect x="625" y="342" width="130" height="8" rx="4" fill="#66BB6A" opacity="0.8"/>
+  <rect x="610" y="370" width="70" height="8" rx="4" fill="#FFA726" opacity="0.8"/>
+  <rect x="686" y="370" width="80" height="8" rx="4" fill="#90CAF9" opacity="0.5"/>
+  <rect x="610" y="398" width="110" height="8" rx="4" fill="#BDBDBD" opacity="0.6"/>
+
+  <!-- 右页下方文字 -->
+  <rect x="560" y="455" width="300" height="9" rx="4" fill="#B0BEC5" opacity="0.6"/>
+  <rect x="560" y="479" width="270" height="9" rx="4" fill="#CFD8DC" opacity="0.5"/>
+  <rect x="560" y="503" width="310" height="9" rx="4" fill="#CFD8DC" opacity="0.5"/>
+  <rect x="560" y="527" width="240" height="9" rx="4" fill="#CFD8DC" opacity="0.5"/>
+  <rect x="560" y="551" width="290" height="9" rx="4" fill="#CFD8DC" opacity="0.5"/>
+  <rect x="560" y="575" width="260" height="9" rx="4" fill="#CFD8DC" opacity="0.5"/>
+  <rect x="560" y="599" width="310" height="9" rx="4" fill="#CFD8DC" opacity="0.5"/>
+  <rect x="560" y="623" width="220" height="9" rx="4" fill="#CFD8DC" opacity="0.5"/>
+  <rect x="560" y="647" width="280" height="9" rx="4" fill="#CFD8DC" opacity="0.5"/>
+  <rect x="560" y="671" width="200" height="9" rx="4" fill="#CFD8DC" opacity="0.5"/>
+
+  <!-- 「书昀」文字（书本下方居中） -->
+  <text x="512" y="870" text-anchor="middle"
+        font-family="'Noto Sans CJK SC Black', 'Noto Sans CJK SC Medium', 'Noto Sans CJK SC', sans-serif"
+        font-size="120" font-weight="900" fill="#FFFFFF" letter-spacing="16">书昀</text>
 </svg>
