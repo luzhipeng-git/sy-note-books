@@ -63,6 +63,11 @@ jobs:
       # 5. 前端依赖
       - run: pnpm install --no-frozen-lockfile
 
+      # 5.5 预验证前端构建
+      - run: pnpm build
+        env:
+          ROLLDOWN_LOG: error
+
       # 6. 构建 Tauri + 发布
       - uses: tauri-apps/tauri-action@v0
         env:
