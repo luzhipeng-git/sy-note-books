@@ -71,15 +71,26 @@ git push -u origin main
 ```bash
 cd /home/zhipeng/workspace/desktop-soft/my-note-book
 
-# 生成密钥对
+# 生成密钥对 （密码lzp2006new）
 pnpm tauri signer generate -w ~/.tauri/synote.key
 ```
 
 运行后交互过程：
 
 ```
-App key saved to "/home/<你>/.tauri/synote.key".
-Your public key: dW50cnVzdGVkLWNvbW1lbnQ6I...一串很长的字符串...
+
+Your keypair was generated successfully:
+Private: /home/zhipeng/.tauri/synote.key (Keep it secret!)
+Public: /home/zhipeng/.tauri/synote.key.pub
+---------------------------
+
+Environment variables used to sign:
+- `TAURI_SIGNING_PRIVATE_KEY`: String of your private key
+- `TAURI_SIGNING_PRIVATE_KEY_PATH`: Path to your private key file
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`:  Your private key password (optional if key has no password)
+
+ATTENTION: If you lose your private key OR password, you'll not be able to sign your update package and updates will not work
+
 ```
 
 **⚠️ 重要：保存好以下三项信息**
@@ -102,12 +113,14 @@ Your public key: dW50cnVzdGVkLWNvbW1lbnQ6I...一串很长的字符串...
 
 GitHub Secrets 是加密存储的敏感信息，CI 流水线运行时可以读取，但不会在日志中泄露。
 
-### 操作路径
+### 操作路径（⚠️ 是仓库的 Settings，不是账号的 Settings）
 
-1. 打开你的 GitHub 仓库页面
-2. 点击 **`Settings`**（仓库级，不是账号级）
+1. 打开你的 GitHub **仓库页面**（`https://github.com/luzhipeng-git/sy-note-books`）
+2. 点击仓库页面中的 **`Settings`** 标签页（注意：不是右上角头像里的 Settings，那是账号级的）
 3. 左侧菜单找到 **`Secrets and variables`** → **`Actions`**
 4. 点击 **`New repository secret`**
+
+> **区分方法**：账号 Settings 的 URL 是 `github.com/settings/...`，仓库 Settings 的 URL 是 `github.com/<用户名>/<仓库名>/settings/...`
 
 ### 需要配置的 Secrets
 
