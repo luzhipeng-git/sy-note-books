@@ -54,7 +54,7 @@ describe('workspaceStore — input tolerance', () => {
 
   it('createWorkspace with empty title does not crash', async () => {
     const store = useWorkspaceStore.getState();
-    await store.createWorkspace('/tmp/test-ws-empty-title', '');
+    await store.createWorkspace('/tmp/test-ws-empty-title', '', 'test-author');
     const state = useWorkspaceStore.getState();
     expect(state).toBeDefined();
   });
@@ -62,14 +62,14 @@ describe('workspaceStore — input tolerance', () => {
   it('createWorkspace with very long title does not crash', async () => {
     const longTitle = 'A'.repeat(500);
     const store = useWorkspaceStore.getState();
-    await store.createWorkspace('/tmp/test-ws-long-title', longTitle);
+    await store.createWorkspace('/tmp/test-ws-long-title', longTitle, 'test-author');
     const state = useWorkspaceStore.getState();
     expect(state).toBeDefined();
   });
 
   it('createWorkspace with unicode title does not crash', async () => {
     const store = useWorkspaceStore.getState();
-    await store.createWorkspace('/tmp/test-ws-unicode', '中文标题 🎉 émojis');
+    await store.createWorkspace('/tmp/test-ws-unicode', '中文标题 🎉 émojis', 'test-author');
     const state = useWorkspaceStore.getState();
     expect(state).toBeDefined();
   });
@@ -79,6 +79,7 @@ describe('workspaceStore — input tolerance', () => {
     await store.createWorkspace(
       '/tmp/test-ws-special',
       '<script>alert(1)</script>',
+      'test-author',
     );
     const state = useWorkspaceStore.getState();
     expect(state).toBeDefined();
