@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>sy-note-books — 全局布局</title>
+  <link rel="stylesheet" href="shared.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<nav class="proto-nav">
+  <span>sy-note-books Prototypes:</span>
+  <a href="00-overview.html" class="current">全局布局</a>
+  <a href="01-welcome.html">欢迎页</a>
+  <a href="02-file-tree.html">文件树</a>
+  <a href="03-editor.html">编辑器</a>
+  <a href="04-whiteboard.html">白板</a>
+  <a href="05-search.html">搜索</a>
+  <a href="06-export.html">导出</a>
+</nav>
+
+<div class="app-shell" id="appShell">
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar" style="width: 260px;">
+    <div class="sidebar-header">
+      <span>书昀笔记电子书</span>
+      <div class="sidebar-actions">
+        <button class="sidebar-btn" title="新建章节">＋</button>
+        <button class="sidebar-btn" title="更多操作">⋯</button>
+      </div>
+    </div>
+    <div class="file-tree">
+      <div class="tree-item folder" onclick="toggle(this)" data-expanded="true">
+        <span class="tree-icon">▼</span>
+        <span>📁 入门指南</span>
+      </div>
+      <div class="tree-item" style="padding-left: 32px;" onclick="selectFile(this)">
+        <span class="tree-icon">📄</span>
+        <span>快速开始</span>
+      </div>
+      <div class="tree-item" style="padding-left: 32px;" onclick="selectFile(this)">
+        <span class="tree-icon">📄</span>
+        <span>安装说明</span>
+      </div>
+
+      <div class="tree-item folder" onclick="toggle(this)" data-expanded="true">
+        <span class="tree-icon">▼</span>
+        <span>📁 系统架构</span>
+      </div>
+      <div class="tree-item" style="padding-left: 32px;" onclick="selectFile(this)">
+        <span class="tree-icon">📄</span>
+        <span>架构概览</span>
+      </div>
+      <div class="tree-item active" style="padding-left: 32px;" onclick="selectFile(this)">
+        <span class="tree-icon">📄</span>
+        <span>API 总览</span>
+      </div>
+
+      <div class="tree-item folder" onclick="toggle(this)" data-expanded="false">
+        <span class="tree-icon">▶</span>
+        <span>📁 API 参考</span>
+      </div>
+
+      <div class="tree-item folder" onclick="toggle(this)" data-expanded="false">
+        <span class="tree-icon">▶</span>
+        <span>📁 附录</span>
+      </div>
+    </div>
+    <div style="padding: var(--sp-2) var(--sp-3); border-top: 1px solid rgba(255,255,255,0.06); font-size: 11px; color: #64748B;">
+      4 个章节 · 5 个页面
+    </div>
+  </aside>
+
+  <!-- Sidebar Resize Handle -->
+  <div class="sidebar-resize" id="resizeHandle"></div>
+
+  <!-- Main Area -->
+  <main class="main-area">
+
+    <!-- View: Markdown -->
+    <div id="viewMarkdown">
+      <div class="toolbar">
+        <button class="toolbar-btn">💾</button>
+        <button class="toolbar-btn">↩</button>
+        <button class="toolbar-btn">↪</button>
+        <div class="toolbar-separator"></div>
+        <button class="toolbar-btn"><b>B</b></button>
+        <button class="toolbar-btn"><i>I</i></button>
+        <button class="toolbar-btn"><s>S</s></button>
+        <button class="toolbar-btn">&lt;/&gt;</button>
+        <button class="toolbar-btn">🔗</button>
+        <button class="toolbar-btn">🖼</button>
+        <div class="toolbar-separator"></div>
+        <button class="toolbar-btn" style="color:var(--primary);" onclick="switchView('whiteboard')">✏️ 画图</button>
+        <div class="toolbar-spacer"></div>
+        <button class="toolbar-btn" onclick="switchView('search')">🔍 搜索</button>
+        <button class="toolbar-btn" onclick="toggleTheme()">🌓</button>
+      </div>
+
+      <div class="breadcrumb">
+        <span>系统架构</span>
+        <span class="breadcrumb-sep">›</span>
+        <span class="breadcrumb-current">API 总览</span>
+      </div>
+
+      <div class="editor-area" style="position: relative;">
+        <h1>API 总览</h1>
+        <p>本文档描述系统的所有 REST API 端点。基础 URL 为 <code>https://api.example.com/v1</code></p>
+        <h2>认证</h2>
+        <p>所有 API 请求需要在 Header 中携带 Bearer Token：</p>
+        <pre><code>Authorization: Bearer &lt;token&gt;</code></pre>
+        <h2>用户接口</h2>
+        <p>以下表格列出了所有可用的用户相关接口：</p>
+        <table style="width:100%; border-collapse:collapse; margin-bottom: var(--sp-4); font-size: var(--text-sm);">
+          <thead>
+            <tr style="background:var(--surface-2); text-align:left;">
+              <th style="padding:var(--sp-2) var(--sp-3); border-bottom:2px solid var(--main-border);">方法</th>
+              <th style="padding:var(--sp-2) var(--sp-3); border-bottom:2px solid var(--main-border);">路径</th>
+              <th style="padding:var(--sp-2) var(--sp-3); border-bottom:2px solid var(--main-border);">说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom:1px solid var(--main-border);"><td style="padding:var(--sp-2) var(--sp-3);"><code>GET</code></td><td style="padding:var(--sp-2) var(--sp-3);"><code>/users</code></td><td style="padding:var(--sp-2) var(--sp-3);">获取用户列表</td></tr>
+            <tr style="border-bottom:1px solid var(--main-border);"><td style="padding:var(--sp-2) var(--sp-3);"><code>POST</code></td><td style="padding:var(--sp-2) var(--sp-3);"><code>/users</code></td><td style="padding:var(--sp-2) var(--sp-3);">创建用户</td></tr>
+            <tr style="border-bottom:1px solid var(--main-border);"><td style="padding:var(--sp-2) var(--sp-3);"><code>GET</code></td><td style="padding:var(--sp-2) var(--sp-3);"><code>/users/:id</code></td><td style="padding:var(--sp-2) var(--sp-3);">获取单个用户</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="status-bar">
+        <span>Markdown</span>
+        <span>UTF-8</span>
+        <span id="saveStatus">✓ 已自动保存</span>
+        <span style="flex:1;"></span>
+        <span>行 15, 列 32</span>
+      </div>
+    </div>
+
+    <!-- View: Whiteboard (hidden by default) -->
+    <div id="viewWhiteboard" style="display:none; flex:1; flex-direction:column;">
+      <div class="wb-topbar">
+        <button class="toolbar-btn" onclick="switchView('markdown')">← 返回</button>
+        <div class="wb-topbar-title">正在为「<strong>API 总览</strong>」段落绘制插图</div>
+        <button class="btn btn-primary" onclick="showSaveToast()">💾 保存并插入</button>
+      </div>
+      <div class="wb-toolbar">
+        <button class="wb-tool-btn active">🖱 选择</button>
+        <button class="wb-tool-btn">✏️ 画笔</button>
+        <button class="wb-tool-btn">T 文本</button>
+        <button class="wb-tool-btn">▭ 矩形</button>
+        <button class="wb-tool-btn">◯ 椭圆</button>
+        <button class="wb-tool-btn">→ 箭头</button>
+        <div class="toolbar-separator"></div>
+        <button class="wb-tool-btn">↩</button>
+        <button class="wb-tool-btn">↪</button>
+        <button class="wb-tool-btn" style="color:var(--accent-red);">🗑</button>
+      </div>
+      <div class="canvas-area">
+        <div class="canvas-content">
+          <svg width="400" height="240" viewBox="0 0 400 240">
+            <rect x="40" y="30" width="140" height="50" rx="8" fill="#DBEAFE" stroke="#2563EB" stroke-width="2"/>
+            <text x="110" y="60" text-anchor="middle" fill="#1E293B" font-size="13" font-weight="500">用户请求</text>
+            <line x1="180" y1="55" x2="220" y2="55" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+            <rect x="220" y="30" width="140" height="50" rx="8" fill="#DCFCE7" stroke="#16A34A" stroke-width="2"/>
+            <text x="290" y="60" text-anchor="middle" fill="#1E293B" font-size="13" font-weight="500">API 网关</text>
+            <line x1="290" y1="80" x2="290" y2="120" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+            <rect x="220" y="120" width="140" height="50" rx="8" fill="#FEF9C3" stroke="#CA8A04" stroke-width="2"/>
+            <text x="290" y="150" text-anchor="middle" fill="#1E293B" font-size="13" font-weight="500">业务服务</text>
+            <defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#94A3B8"/></marker></defs>
+          </svg>
+        </div>
+        <div class="canvas-zoom-controls">
+          <button class="canvas-zoom-btn">−</button>
+          <span class="canvas-zoom-level">100%</span>
+          <button class="canvas-zoom-btn">＋</button>
+        </div>
+      </div>
+      <div class="status-bar">
+        <span>Drawnix 白板</span>
+        <span style="flex:1;"></span>
+        <span>画布 1920 × 1080</span>
+        <span>缩放 100%</span>
+      </div>
+    </div>
+
+    <!-- View: Search Overlay -->
+    <div class="search-overlay" id="searchOverlay" style="display:none;">
+      <div class="search-dialog">
+        <div class="search-input-wrap">
+          <span>🔍</span>
+          <input type="text" placeholder="搜索文档内容..." autofocus>
+          <span style="font-size:11px;color:#94A3B8;">Ctrl+Shift+F</span>
+        </div>
+        <div class="search-results">
+          <div class="search-result-item">
+            <div class="search-result-title">API 总览</div>
+            <div class="search-result-path">系统架构 &gt; API 总览</div>
+            <div class="search-result-snippet">...所有 <span class="search-highlight">API</span> 请求需要在 Header 中携带...</div>
+          </div>
+          <div class="search-result-item">
+            <div class="search-result-title">架构概览</div>
+            <div class="search-result-path">系统架构 &gt; 架构概览</div>
+            <div class="search-result-snippet">...系统采用微服务架构，<span class="search-highlight">API</span> 网关负责路由...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast">保存成功</div>
+
+<script>
+// === View Switching ===
+function switchView(view) {
+  document.getElementById('viewMarkdown').style.display = view === 'markdown' ? 'block' : 'none';
+  document.getElementById('viewWhiteboard').style.display = view === 'whiteboard' ? 'flex' : 'none';
+  document.getElementById('sidebar').style.display = view === 'whiteboard' ? 'none' : 'flex';
+  document.getElementById('resizeHandle').style.display = view === 'whiteboard' ? 'none' : 'block';
+  document.getElementById('searchOverlay').style.display = 'none';
+
+  if (view === 'empty') {
+    document.getElementById('viewMarkdown').style.display = 'none';
+    document.getElementById('viewWhiteboard').style.display = 'none';
+    document.getElementById('sidebar').style.display = 'none';
+    document.getElementById('resizeHandle').style.display = 'none';
+    // Show welcome in main area
+    if (!document.getElementById('welcomeView')) {
+      const welcome = document.createElement('div');
+      welcome.id = 'welcomeView';
+      welcome.className = 'welcome';
+      welcome.innerHTML = '<div style="font-size:48px;">📖</div><div class="welcome-title">书昀笔记电子书</div><div class="welcome-subtitle">面向技术写作者的桌面笔记应用</div><div style="display:flex;gap:12px;margin-top:8px;"><button class="btn btn-primary">新建 Workspace</button><button class="btn btn-secondary">打开文件夹</button></div>';
+      document.querySelector('.main-area').appendChild(welcome);
+    }
+    document.getElementById('welcomeView').style.display = 'flex';
+  } else {
+    const wv = document.getElementById('welcomeView');
+    if (wv) wv.style.display = 'none';
+  }
+
+  if (view === 'search') {
+    switchView('markdown');
+    document.getElementById('searchOverlay').style.display = 'flex';
+  }
+}
+
+// === Theme Toggle ===
+function toggleTheme() {
+  const html = document.documentElement;
+  const current = html.getAttribute('data-theme');
+  html.setAttribute('data-theme', current === 'dark' ? 'light' : 'dark');
+}
+
+// === File Tree ===
+function toggle(el) {
+  const expanded = el.getAttribute('data-expanded') === 'true';
+  el.setAttribute('data-expanded', !expanded);
+  const icon = el.querySelector('.tree-icon');
+  icon.textContent = expanded ? '▶' : '▼';
+  let next = el.nextElementSibling;
+  while (next && !next.classList.contains('folder')) {
+    next.style.display = expanded ? 'none' : 'flex';
+    next = next.nextElementSibling;
+  }
+}
+
+function selectFile(el) {
+  document.querySelectorAll('.tree-item').forEach(i => i.classList.remove('active'));
+  el.classList.add('active');
+  switchView('markdown');
+}
+
+// === Sidebar Resize ===
+(function() {
+  const handle = document.getElementById('resizeHandle');
+  const sidebar = document.getElementById('sidebar');
+  let isResizing = false;
+  handle.addEventListener('mousedown', e => {
+    isResizing = true;
+    handle.classList.add('active');
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    e.preventDefault();
+  });
+  function onMove(e) {
+    if (!isResizing) return;
+    const w = Math.min(400, Math.max(200, e.clientX));
+    sidebar.style.width = w + 'px';
+  }
+  function onUp() {
+    isResizing = false;
+    handle.classList.remove('active');
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+  }
+})();
+
+// === Toast ===
+function showSaveToast() {
+  const toast = document.getElementById('toast');
+  toast.textContent = '✓ 保存并插入成功';
+  toast.className = 'toast success open';
+  setTimeout(() => { toast.className = 'toast'; }, 2000);
+  setTimeout(() => switchView('markdown'), 1500);
+}
+</script>
+</body>
+</html>

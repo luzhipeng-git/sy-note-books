@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>交互设计 — Workspace 管理</title>
+  <link rel="stylesheet" href="shared-interaction.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.min.js"></script>
+  <script>if(typeof mermaid==='undefined')document.write('<script src="https://unpkg.com/mermaid@11.15.0/dist/mermaid.min.js"><\/script>')</script>
+</head>
+<body>
+
+<nav class="interaction-nav">
+  <span>📖 交互设计：</span>
+  <a href="global.html">全局布局</a>
+  <a href="workspace.html" class="current">Workspace</a>
+  <a href="editor.html">编辑器</a>
+  <a href="whiteboard.html">白板</a>
+  <a href="search.html">搜索</a>
+  <a href="export.html">导出</a>
+</nav>
+
+<div class="container">
+  <h1>Workspace 管理</h1>
+  <p class="subtitle">Workspace 的创建、打开、校验修复，以及文件树和章节 CRUD 操作</p>
+
+  <!-- ========== 1. 打开 Workspace ========== -->
+  <h2>1. 打开 Workspace 流程</h2>
+
+  <div class="diagram-section">
+    <div class="mermaid">
+flowchart TD
+    A[用户点击「打开文件夹」] --> B[系统文件选择对话框]
+    B --> C{选择的目录是否包含<br>workspace.json?}
+    C -- 是 --> D[调用 Rust: open_workspace]
+    C -- 否 --> E{目录是否为空?}
+    E -- 是 --> F[弹出确认：「是否在此目录<br>创建新 Workspace?」]
+    F -- 确认 --> G[调用 Rust: create_workspace]
+    F -- 取消 --> H[取消，回到欢迎页]
+    E -- 否 --> I[提示：「该目录不是有效的<br>书昀笔记 Workspace」]
+
+    D --> J[校验 workspace.json]
+    J --> K{JSON 合法?}
+    K -- 合法 --> L[校验 SUMMARY.md 与磁盘一致性]
+    K -- 缺字段 --> M[用默认值补全 → 继续]
+    K -- 损坏 --> N[弹窗：「workspace.json 损坏」<br>选择修复或放弃]
+
+    L --> O{SUMMARY 与磁盘一致?}
+    O -- 一致 --> P[进入编辑器]
+    O -- 磁盘多出文件 --> Q[自动追加到 SUMMARY.md → 继续]
+    O -- 引用指向不存在的文件 --> R[文件树中置灰标记「缺失」]
+
+    M --> L
+    Q --> P
+    R --> P
+    N -- 修复 --> L
+    N -- 放弃 --> H
+
+    G --> P
+
+    style P fill:#DCFCE7,stroke:#16A34A
+    style H fill:#F1F5F9,stroke:#94A3B8
+    style I fill:#FEF2F2,stroke:#DC2626
+    </div>
+  </div>
+
+  <!-- ========== 1.5 关闭 Workspace ========== -->
+  <h2>1.5 关闭 Workspace 流程</h2>
+
+  <div class="diagram-section">
+    <div class="mermaid">
+flowchart TD
+    A["用户在 Sidebar 头部点击 ← 返回按钮"] --> B["清除所有 workspace 状态"]
+    B --> C["rootPath = null"]
+    B --> D["fileTree = []"]
+    B --> E["activeFilePath = null"]
+    B --> F["重置 editorStore"]
+    C --> G["返回欢迎页"]
+    D --> G
+    E --> G
+    F --> G
+
+    style G fill:#DCFCE7,stroke:#16A34A
+    </div>
+  </div>
+
+  <table class="interaction-table">
+    <tr><th>操作</th><th>触发</th><th>结果</th></tr>
+    <tr><td>关闭 Workspace</td><td>点击 Sidebar 标题前的 ← 按钮</td><td>清除所有 workspace/editor 状态，返回欢迎页（显示最近打开列表 + 新建/打开按钮）</td></tr>
+    <tr><td>打开 Workspace 后无文件</td><td>打开 workspace 后（未点击文件）</td><td>右侧显示空白提示「从左侧选择一个文件开始编辑」，不显示欢迎页的管理按钮</td></tr>
+  </table>
+
+  <!-- ========== 2. 文件树交互 ========== -->
+  <h2>2. 文件树交互状态机</h2>
+
+  <div class="diagram-section">
+    <div class="mermaid">
+stateDiagram-v2
+    state "章节（折叠）" as Collapsed
+    state "章节（展开）" as Expanded
+    state "文件（正常）" as Normal
+    state "文件（选中）" as Selected
+    state "文件（缺失）" as Missing
+    state "资源入口" as Assets
+    state "资源（展开）" as AssetsExpanded
+
+    [*] --> Collapsed : 加载文件树
+    Collapsed --> Expanded : 点击章节名 / 点击 ▶ 图标
+    Expanded --> Collapsed : 点击章节名 / 点击 ▼ 图标
+    Expanded --> Normal : 展示子页面列表
+    Normal --> Selected : 单击文件
+    Selected --> Normal : 单击其他文件
+
+    Expanded --> Assets : 显示「🖼️ 资源 (N)」
+    Assets --> AssetsExpanded : 点击
+    AssetsExpanded --> Assets : 再次点击收起
+
+    Normal --> Missing : SUMMARY 引用但磁盘不存在
+    Missing --> Normal : 磁盘恢复文件
+
+    note right of Selected
+        左侧高亮 + 右侧打开编辑器
+        面包屑更新为对应路径
+    end note
+
+    note right of Missing
+        置灰 + 斜体 + tooltip: 文件缺失
+        不可点击
+    end note
+
+    note right of AssetsExpanded
+        列出 assets/ 下文件
+        svg/png → 预览大图
+        .drawnix → 进入白板编辑
+    end note
+    </div>
+  </div>
+
+  <!-- ========== 3. 章节右键菜单 ========== -->
+  <h2>3. 章节右键菜单操作</h2>
+
+  <div class="diagram-section">
+    <div class="mermaid">
+flowchart TD
+    A[右键点击章节/文件] --> B[显示上下文菜单]
+
+    B --> C{操作类型}
+
+    C -->|新建子页面| D[弹出输入框：页面标题]
+    D --> E[校验标题非空 + 无重名]
+    E -- 合法 --> F["Rust: 创建 md 文件 + assets/<br>自动更新 SUMMARY.md"]
+    E -- 重复 --> G[提示：「该标题已存在」]
+
+    C -->|重命名| H[原位编辑模式：文件名变为输入框]
+    H --> I[校验新名称非空 + 无重名]
+    I -- 合法 --> J["Rust: 重命名文件夹/md<br>更新 SUMMARY.md"]
+    I -- 取消 --> K[恢复原名称]
+
+    C -->|删除| L["弹出确认：「确定删除「{名称}」？<br>将删除文件夹及所有内容」"]
+    L -- 确认 --> M["Rust: 删除文件夹<br>更新 SUMMARY.md"]
+    L -- 取消 --> N[关闭菜单]
+
+    style F fill:#DCFCE7,stroke:#16A34A
+    style J fill:#DCFCE7,stroke:#16A34A
+    style M fill:#FEF2F2,stroke:#DC2626
+    </div>
+  </div>
+
+  <h3>操作反馈</h3>
+  <table>
+    <tr><th>操作</th><th>触发方式</th><th>成功反馈</th><th>失败反馈</th></tr>
+    <tr>
+      <td>新建章节</td>
+      <td><span class="tag tag-trigger">Sidebar ＋ 按钮</span></td>
+      <td>文件树出现新节点 + 自动选中 + 打开编辑器</td>
+      <td>Toast：「创建失败：{原因}」</td>
+    </tr>
+    <tr>
+      <td>新建子页面</td>
+      <td><span class="tag tag-trigger">右键 → 新建子页面</span></td>
+      <td>文件树章节下出现新页面 + 自动选中</td>
+      <td>Toast：「标题已存在」</td>
+    </tr>
+    <tr>
+      <td>重命名</td>
+      <td><span class="tag tag-trigger">右键 → 重命名</span> / 双击</td>
+      <td>文件树节点名称更新 + SUMMARY.md 同步</td>
+      <td>恢复原名称 + Toast：「名称已存在」</td>
+    </tr>
+    <tr>
+      <td>删除</td>
+      <td><span class="tag tag-trigger">右键 → 删除</span></td>
+      <td>节点消失 + 若删除当前打开文件则切到 Empty</td>
+      <td>Toast：「删除失败：{原因}」</td>
+    </tr>
+    <tr>
+      <td>拖拽排序</td>
+      <td><span class="tag tag-trigger">拖拽章节节点</span></td>
+      <td>序号前缀自动重命名 + SUMMARY.md 更新</td>
+      <td>恢复原位置</td>
+    </tr>
+  </table>
+
+</div>
+
+<script>
+if(typeof mermaid!=='undefined'){mermaid.initialize({startOnLoad:true,theme:'default'})}else{document.querySelectorAll('.mermaid').forEach(function(el){el.style.cssText='padding:16px;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:8px';el.textContent='Mermaid library failed to load. Please check your network connection.'})}
+</script>
+</body>
+</html>

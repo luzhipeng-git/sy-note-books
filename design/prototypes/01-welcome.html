@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>sy-note-books — 欢迎页</title>
+  <link rel="stylesheet" href="shared.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<nav class="proto-nav">
+  <span>sy-note-books Prototypes:</span>
+  <a href="00-overview.html">全局布局</a>
+  <a href="01-welcome.html" class="current">欢迎页</a>
+  <a href="02-file-tree.html">文件树</a>
+  <a href="03-editor.html">编辑器</a>
+  <a href="04-whiteboard.html">白板</a>
+  <a href="05-search.html">搜索</a>
+  <a href="06-export.html">导出</a>
+</nav>
+
+<!-- Empty View: Welcome Page -->
+<div class="app-shell">
+  <div class="main-area" style="width:100%;">
+    <div class="welcome" id="welcomePage">
+      <div style="font-size:48px;">📖</div>
+      <div class="welcome-title">书昀笔记电子书</div>
+      <div class="welcome-subtitle">面向技术写作者的桌面笔记应用</div>
+      <div style="display:flex; gap:12px; margin-top:8px;">
+        <button class="btn btn-primary" onclick="showNewModal()">新建 Workspace</button>
+        <button class="btn btn-secondary" onclick="showOpenDialog()">打开文件夹</button>
+      </div>
+      <div style="margin-top:32px; width:100%; max-width:480px;">
+        <div style="font-size:12px; font-weight:600; color:var(--main-text-secondary); margin-bottom:12px; text-transform:uppercase; letter-spacing:0.05em;">最近打开</div>
+        <div class="recent-list">
+          <div class="recent-item" onclick="openWorkspace(this)">
+            <div class="recent-item-name">📝 API 文档项目</div>
+            <div class="recent-item-path">~/Documents/api-docs</div>
+            <div class="recent-item-time">2 小时前</div>
+          </div>
+          <div class="recent-item" onclick="openWorkspace(this)">
+            <div class="recent-item-name">📝 用户手册</div>
+            <div class="recent-item-path">~/Projects/user-manual</div>
+            <div class="recent-item-time">昨天</div>
+          </div>
+          <div class="recent-item" onclick="openWorkspace(this)">
+            <div class="recent-item-name">📝 内部知识库</div>
+            <div class="recent-item-path">~/work/knowledge-base</div>
+            <div class="recent-item-time">3 天前</div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:24px; display:flex; gap:20px; font-size:12px; color:var(--main-text-secondary);">
+        <span><span class="shortcut-tag">Ctrl+Shift+F</span> 搜索</span>
+        <span><span class="shortcut-tag">Ctrl+Shift+D</span> 画图</span>
+        <span><span class="shortcut-tag">Ctrl+P</span> 导出 PDF</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Empty Edit View: After opening workspace, no file selected -->
+<div class="app-shell" id="emptyEditView" style="display:none;">
+  <aside class="sidebar" style="width:280px;">
+    <div class="sidebar-header">
+      <button class="sidebar-btn" title="返回 Workspace 管理" onclick="hideEmptyEdit()" style="margin-right:4px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <span>我的技术文档</span>
+      <div class="sidebar-actions">
+        <button class="sidebar-btn" title="新建章节">＋</button>
+      </div>
+    </div>
+    <div class="file-tree">
+      <div class="tree-item folder"><span class="tree-icon">▶</span><span>📁 入门指南</span></div>
+      <div class="tree-item folder"><span class="tree-icon">▶</span><span>📁 系统架构</span></div>
+      <div class="tree-item folder"><span class="tree-icon">▶</span><span>📁 API 参考</span></div>
+    </div>
+    <div class="sidebar-footer">3 章 · 0 页</div>
+  </aside>
+  <div class="main-area">
+    <div class="welcome" style="padding-top:30%;">
+      <div style="font-size:32px; opacity:0.2;">📄</div>
+      <div style="font-size:16px; color:#64748B; margin-top:8px;">我的技术文档</div>
+      <div style="font-size:13px; color:#64748B; margin-top:4px;">从左侧选择一个文件开始编辑</div>
+    </div>
+  </div>
+</div>
+
+<!-- Toggle buttons for preview -->
+<div style="position:fixed; bottom:40px; right:16px; display:flex; gap:8px; z-index:999;">
+  <button class="btn btn-secondary" onclick="showWelcome()" style="font-size:11px;">欢迎页</button>
+  <button class="btn btn-secondary" onclick="showEmptyEdit()" style="font-size:11px;">空白编辑</button>
+  <button class="btn btn-secondary" onclick="location.href='02-file-tree.html'" style="font-size:11px;">编辑中 →</button>
+</div>
+
+<script>
+function showWelcome() {
+  document.getElementById('welcomePage').parentElement.parentElement.style.display = '';
+  document.getElementById('emptyEditView').style.display = 'none';
+}
+function showEmptyEdit() {
+  document.getElementById('welcomePage').parentElement.parentElement.style.display = 'none';
+  document.getElementById('emptyEditView').style.display = 'flex';
+}
+function hideEmptyEdit() {
+  showWelcome();
+}
+</script>
+
+<!-- New Workspace Modal -->
+<div class="overlay" id="newModal" style="display:none;">
+  <div class="modal">
+    <div class="modal-title">新建 Workspace</div>
+    <div class="form-group">
+      <label class="form-label">Workspace 名称</label>
+      <input class="form-input" type="text" placeholder="例：API 文档项目" id="newName">
+    </div>
+    <div class="form-group">
+      <label class="form-label">保存位置</label>
+      <div style="display:flex; gap:8px;">
+        <input class="form-input" type="text" placeholder="点击选择文件夹" id="newPath" style="flex:1;" readonly>
+        <button class="btn btn-secondary" onclick="pickFolder()">浏览</button>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="hideNewModal()">取消</button>
+      <button class="btn btn-primary" onclick="createWorkspace()">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- Open Folder Dialog (simulated) -->
+<div class="overlay" id="openDialog" style="display:none;">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-title">打开文件夹</div>
+    <p style="font-size:13px; color:var(--main-text-secondary); margin-bottom:16px;">选择包含 Markdown 文件的文件夹作为 Workspace</p>
+    <div style="display:flex; flex-direction:column; gap:8px;">
+      <div class="open-choice" onclick="openWithWorkspace()">
+        <div style="font-weight:500;">📂 ~/Documents/api-docs</div>
+        <div style="font-size:12px; color:var(--accent-green);">✓ 检测到 workspace.json</div>
+      </div>
+      <div class="open-choice" onclick="openEmptyDir()">
+        <div style="font-weight:500;">📂 ~/Projects/new-docs</div>
+        <div style="font-size:12px; color:var(--main-text-secondary);">空目录 — 将创建新 Workspace</div>
+      </div>
+      <div class="open-choice" onclick="openInvalidDir()">
+        <div style="font-weight:500;">📂 ~/Downloads/random-files</div>
+        <div style="font-size:12px; color:var(--accent-red);">非空目录且无 workspace.json</div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="hideOpenDialog()">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Create in Empty Dir -->
+<div class="overlay" id="confirmCreate" style="display:none;">
+  <div class="confirm-dialog">
+    <div class="confirm-dialog-title">创建新 Workspace？</div>
+    <div class="confirm-dialog-text">将在「~/Projects/new-docs」中创建 workspace.json 和 SUMMARY.md</div>
+    <div style="display:flex; justify-content:center; gap:8px;">
+      <button class="btn btn-ghost" onclick="document.getElementById('confirmCreate').style.display='none'">取消</button>
+      <button class="btn btn-primary" onclick="proceedCreate()">确认创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- Invalid Dir Warning -->
+<div class="overlay" id="invalidWarning" style="display:none;">
+  <div class="confirm-dialog">
+    <div class="confirm-dialog-title" style="color:var(--accent-orange);">⚠️ 非 Workspace 目录</div>
+    <div class="confirm-dialog-text">「~/Downloads/random-files」不是有效的书昀笔记 Workspace。该目录已包含文件且没有 workspace.json。</div>
+    <div style="display:flex; justify-content:center; gap:8px;">
+      <button class="btn btn-primary" onclick="document.getElementById('invalidWarning').style.display='none'">知道了</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<style>
+  .recent-list { display:flex; flex-direction:column; gap:4px; }
+  .recent-item {
+    display:flex; align-items:center; padding:10px 12px; border-radius:6px; cursor:pointer;
+    transition: background 100ms; gap:12px;
+  }
+  .recent-item:hover { background: var(--surface-3); }
+  .recent-item-name { font-weight:500; font-size:14px; min-width:160px; }
+  .recent-item-path { font-size:12px; color:var(--main-text-secondary); flex:1; }
+  .recent-item-time { font-size:11px; color:#94A3B8; }
+  .open-choice {
+    padding:12px; border:1px solid var(--main-border); border-radius:8px; cursor:pointer;
+    transition: all 100ms;
+  }
+  .open-choice:hover { border-color:var(--primary); background:var(--primary-light); }
+</style>
+
+<script>
+function showNewModal() { document.getElementById('newModal').style.display = 'flex'; }
+function hideNewModal() { document.getElementById('newModal').style.display = 'none'; }
+function showOpenDialog() { document.getElementById('openDialog').style.display = 'flex'; }
+function hideOpenDialog() { document.getElementById('openDialog').style.display = 'none'; }
+
+function pickFolder() {
+  document.getElementById('newPath').value = '~/Documents/' + (document.getElementById('newName').value || 'new-workspace');
+}
+
+function createWorkspace() {
+  const name = document.getElementById('newName').value;
+  if (!name) return;
+  hideNewModal();
+  showToast('✓ Workspace「' + name + '」创建成功');
+}
+
+function openWorkspace() { showToast('✓ 正在打开 Workspace...'); }
+
+function openWithWorkspace() {
+  hideOpenDialog();
+  showToast('✓ Workspace 已打开');
+}
+
+function openEmptyDir() {
+  hideOpenDialog();
+  document.getElementById('confirmCreate').style.display = 'flex';
+}
+
+function openInvalidDir() {
+  hideOpenDialog();
+  document.getElementById('invalidWarning').style.display = 'flex';
+}
+
+function proceedCreate() {
+  document.getElementById('confirmCreate').style.display = 'none';
+  showToast('✓ 新 Workspace 创建成功');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast success open';
+  setTimeout(() => { t.className = 'toast'; }, 2500);
+}
+</script>
+</body>
+</html>

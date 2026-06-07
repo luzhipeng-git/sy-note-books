@@ -1,0 +1,123 @@
+diff --git a/fesm2022/plait-mind.mjs b/fesm2022/plait-mind.mjs
+index e4f85866e811e9ee75d5faadf94f713649054574..db3e79cc28cfa21005d184a64ef1e76a84d95975 100644
+--- a/fesm2022/plait-mind.mjs
++++ b/fesm2022/plait-mind.mjs
+@@ -1125,10 +1125,10 @@ const removeActiveOnDragOrigin = (activeElement) => {
+ const setMindDragging = (board, state) => {
+     setDragging(board, state);
+     if (state) {
+-        PlaitBoard.getBoardContainer(board).classList.add('mind-node-dragging');
++        (PlaitBoard.getBoardContainer(board))?.classList?.add('mind-node-dragging');
+     }
+     else {
+-        PlaitBoard.getBoardContainer(board).classList.remove('mind-node-dragging');
++        (PlaitBoard.getBoardContainer(board))?.classList?.remove('mind-node-dragging');
+     }
+ };
+ const hasPreviousOrNextOfDropPath = (parent, dropTarget, dropPath) => {
+@@ -1545,7 +1545,7 @@ function drawLogicLink(board, parent, node, isHorizontal, defaultStrokeColor = n
+         linkG = drawLinearPath(polylinePoints, { stroke: branchColor, strokeWidth: branchWidth, strokeLineDash });
+     }
+     else {
+-        linkG = PlaitBoard.getRoughSVG(board).curve(points, { stroke: branchColor, strokeWidth: branchWidth, strokeLineDash });
++        linkG = (PlaitBoard.getRoughSVG(board))?.curve(points, { stroke: branchColor, strokeWidth: branchWidth, strokeLineDash });
+     }
+     if (strokeStyle === StrokeStyle.dotted) {
+         setStrokeLinecap(linkG, 'round');
+@@ -1832,15 +1832,15 @@ function getHandleOption(isHover) {
+ function handleBoardClass(board, activeHandlePosition, isHorizontal) {
+     if (activeHandlePosition) {
+         if (isHorizontal) {
+-            PlaitBoard.getBoardContainer(board).classList.add('abstract-resizing-horizontal');
++            (PlaitBoard.getBoardContainer(board))?.classList?.add('abstract-resizing-horizontal');
+         }
+         else {
+-            PlaitBoard.getBoardContainer(board).classList.add('abstract-resizing-vertical');
++            (PlaitBoard.getBoardContainer(board))?.classList?.add('abstract-resizing-vertical');
+         }
+     }
+     else {
+-        PlaitBoard.getBoardContainer(board).classList.remove('abstract-resizing-horizontal');
+-        PlaitBoard.getBoardContainer(board).classList.remove('abstract-resizing-vertical');
++        (PlaitBoard.getBoardContainer(board))?.classList?.remove('abstract-resizing-horizontal');
++        (PlaitBoard.getBoardContainer(board))?.classList?.remove('abstract-resizing-vertical');
+     }
+ }
+ function drawAbstractRoundRectangle(rs, x1, y1, x2, y2, isHorizontal, options) {
+@@ -2385,7 +2385,7 @@ function drawAbstractLink(board, node, isHorizontal) {
+         g.appendChild(straightLine);
+         return g;
+     }
+-    const link = PlaitBoard.getRoughSVG(board).path(`M${bezierBeginPoint[0]},${bezierBeginPoint[1]} Q${c1[0]},${c1[1]} ${bezierConnectorPoint[0]},${bezierConnectorPoint[1]} Q${c2[0]},${c2[1]} ${bezierEndPoint[0]},${bezierEndPoint[1]} M${abstractConnectorPoint[0]},${abstractConnectorPoint[1]} L${bezierConnectorPoint[0]},${bezierConnectorPoint[1]}`, {
++    const link = (PlaitBoard.getRoughSVG(board))?.path(`M${bezierBeginPoint[0]},${bezierBeginPoint[1]} Q${c1[0]},${c1[1]} ${bezierConnectorPoint[0]},${bezierConnectorPoint[1]} Q${c2[0]},${c2[1]} ${bezierEndPoint[0]},${bezierEndPoint[1]} M${abstractConnectorPoint[0]},${abstractConnectorPoint[1]} L${bezierConnectorPoint[0]},${bezierConnectorPoint[1]}`, {
+         stroke: branchColor,
+         strokeWidth: branchWidth,
+         strokeLineDash
+@@ -2705,7 +2705,7 @@ class NodeMoreGenerator extends Generator {
+             if (isShowCollapseAnimation) {
+                 collapseG.classList.add('animated');
+             }
+-            const collapseCircle = PlaitBoard.getRoughSVG(this.board).circle(center[0], center[1], NODE_MORE_ICON_DIAMETER, {
++            const collapseCircle = (PlaitBoard.getRoughSVG(this.board))?.circle(center[0], center[1], NODE_MORE_ICON_DIAMETER, {
+                 fill: '#fff',
+                 stroke,
+                 strokeWidth: NODE_MORE_STROKE_WIDTH,
+@@ -2713,7 +2713,7 @@ class NodeMoreGenerator extends Generator {
+             });
+             const start = moveXOfPoint(center, -NODE_MORE_BRIDGE_DISTANCE / 2);
+             const end = moveXOfPoint(center, NODE_MORE_BRIDGE_DISTANCE / 2);
+-            const collapseLine = PlaitBoard.getRoughSVG(this.board).line(start[0], start[1], end[0], end[1], {
++            const collapseLine = (PlaitBoard.getRoughSVG(this.board))?.line(start[0], start[1], end[0], end[1], {
+                 fill: '#fff',
+                 stroke,
+                 strokeWidth: NODE_MORE_STROKE_WIDTH,
+@@ -2730,7 +2730,7 @@ class NodeMoreGenerator extends Generator {
+             if (isShowAddAnimation) {
+                 addG.classList.add('animated');
+             }
+-            const circle = PlaitBoard.getRoughSVG(this.board).circle(addCenter[0], addCenter[1], NODE_MORE_ICON_DIAMETER + NODE_MORE_STROKE_WIDTH, {
++            const circle = (PlaitBoard.getRoughSVG(this.board))?.circle(addCenter[0], addCenter[1], NODE_MORE_ICON_DIAMETER + NODE_MORE_STROKE_WIDTH, {
+                 fill: isHit ? NODE_ADD_HOVER_COLOR : NODE_ADD_CIRCLE_COLOR,
+                 stroke: TRANSPARENT,
+                 fillStyle: 'solid'
+@@ -2739,12 +2739,12 @@ class NodeMoreGenerator extends Generator {
+             const hLineEndPoint = [addCenter[0] + NODE_MORE_BRIDGE_DISTANCE / 2, addCenter[1]];
+             const vLineBeginPoint = [addCenter[0], addCenter[1] - NODE_MORE_BRIDGE_DISTANCE / 2];
+             const vLineEndPoint = [addCenter[0], addCenter[1] + NODE_MORE_BRIDGE_DISTANCE / 2];
+-            const innerCrossHLine = PlaitBoard.getRoughSVG(this.board).line(hLineBeginPoint[0], hLineBeginPoint[1], hLineEndPoint[0], hLineEndPoint[1], {
++            const innerCrossHLine = (PlaitBoard.getRoughSVG(this.board))?.line(hLineBeginPoint[0], hLineBeginPoint[1], hLineEndPoint[0], hLineEndPoint[1], {
+                 stroke: NODE_ADD_INNER_CROSS_COLOR,
+                 strokeWidth: NODE_MORE_STROKE_WIDTH
+             });
+             setStrokeLinecap(innerCrossHLine, 'round');
+-            const innerCrossVLine = PlaitBoard.getRoughSVG(this.board).line(vLineBeginPoint[0], vLineBeginPoint[1], vLineEndPoint[0], vLineEndPoint[1], {
++            const innerCrossVLine = (PlaitBoard.getRoughSVG(this.board))?.line(vLineBeginPoint[0], vLineBeginPoint[1], vLineEndPoint[0], vLineEndPoint[1], {
+                 stroke: NODE_ADD_INNER_CROSS_COLOR,
+                 strokeWidth: NODE_MORE_STROKE_WIDTH
+             });
+@@ -2769,14 +2769,14 @@ class NodeMoreGenerator extends Generator {
+         this.expandG = createG();
+         this.expandG.classList.add('expanded-button');
+         const endWithWidth = moreStartAndEnd[1];
+-        const moreLine = PlaitBoard.getRoughSVG(this.board).line(moreStartAndEnd[0][0], moreStartAndEnd[0][1], endWithWidth[0], endWithWidth[1], {
++        const moreLine = (PlaitBoard.getRoughSVG(this.board))?.line(moreStartAndEnd[0][0], moreStartAndEnd[0][1], endWithWidth[0], endWithWidth[1], {
+             fill: stroke,
+             stroke,
+             fillStyle: 'solid',
+             strokeWidth: NODE_MORE_STROKE_WIDTH
+         });
+         const backgroundColor = isHoveredExpandIcon ? rgbaToHEX(stroke, 0.4) : rgbaToHEX(stroke, 0.2);
+-        const badgeBackground = PlaitBoard.getRoughSVG(this.board).circle(center[0], center[1], NODE_MORE_ICON_DIAMETER + NODE_MORE_STROKE_WIDTH, {
++        const badgeBackground = (PlaitBoard.getRoughSVG(this.board))?.circle(center[0], center[1], NODE_MORE_ICON_DIAMETER + NODE_MORE_STROKE_WIDTH, {
+             fill: backgroundColor,
+             stroke: TRANSPARENT,
+             fillStyle: 'solid'
+@@ -3772,7 +3772,7 @@ const withNodeImage = (board) => {
+     };
+     board.globalPointerUp = (event) => {
+         if (PlaitBoard.isFocus(board)) {
+-            const isInBoard = event.target instanceof Node && PlaitBoard.getBoardContainer(board).contains(event.target);
++            const isInBoard = event.target instanceof Node && (PlaitBoard.getBoardContainer(board))?.contains(event.target);
+             const selectedImageElement = getElementOfFocusedImage(board);
+             // Clear image selection when mouse board outside area
+             if (selectedImageElement && MindElement.isMindElement(board, selectedImageElement) && !isInBoard) {

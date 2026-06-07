@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>交互设计 — 白板画图</title>
+  <link rel="stylesheet" href="shared-interaction.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.min.js"></script>
+  <script>if(typeof mermaid==='undefined')document.write('<script src="https://unpkg.com/mermaid@11.15.0/dist/mermaid.min.js"><\/script>')</script>
+</head>
+<body>
+
+<nav class="interaction-nav">
+  <span>📖 交互设计：</span>
+  <a href="global.html">全局布局</a>
+  <a href="workspace.html">Workspace</a>
+  <a href="editor.html">编辑器</a>
+  <a href="whiteboard.html" class="current">白板</a>
+  <a href="search.html">搜索</a>
+  <a href="export.html">导出</a>
+</nav>
+
+<div class="container">
+  <h1>白板画图</h1>
+  <p class="subtitle">编辑器↔白板模式切换、锚点机制、保存并插入、双击编辑已有图</p>
+
+  <!-- ========== 1. 模式切换状态机 ========== -->
+  <h2>1. 编辑器 ↔ 白板 模式切换</h2>
+
+  <div class="diagram-section">
+    <div class="mermaid">
+stateDiagram-v2
+    state "Markdown 编辑" as MD
+    state "记录锚点" as Anchor
+    state "白板全屏" as WB
+    state "保存文件" as Save
+    state "插入引用" as Insert
+
+    [*] --> MD
+
+    MD --> Anchor : 触发画图（三种方式）
+    Anchor --> WB : 锚点记录完成
+    WB --> MD : ESC 取消
+    WB --> Save : 点击「保存并插入」
+    Save --> Insert : 文件写入成功
+    Insert --> MD : 光标恢复到锚点位置
+
+    note right of MD
+        三种触发方式：
+        1. Ctrl+Shift+D
+        2. 输入 /wb 空格
+        3. 点击工具栏画笔图标
+    end note
+
+    note right of Anchor
+        记录三项信息：
+        1. sourceFilePath
+        2. cursorPosition (行号)
+        3. nearestHeading (最近标题)
+    end note
+
+    note right of WB
+        全屏 Drawnix
+        顶栏：← 返回 + 段落提示
+        底层编辑器隐藏（不销毁）
+    end note
+
+    note right of Save
+        写入 .drawnix + .svg
+        计算下一个图片编号
+    end note
+
+    note right of Insert
+        在 Markdown 光标位置插入：
+        ![img-{N}](./assets/{doc}-img-{N}.svg)
+    end note
+    </div>
+  </div>
+
+  <!-- ========== 2. 保存并插入完整流程 ========== -->
+  <h2>2. 「保存并插入」数据流</h2>
+
+  <div class="diagram-section">
+    <div class="mermaid">
+flowchart TD
+    A["用户点击「保存并插入」"] --> B["Drawnix 导出数据"]
+    B --> C["获取 PlaitElement JSON"]
+    B --> D["导出为 SVG 字符串"]
+
+    C --> E["imageService.getNextIndex"]
+    E --> F["扫描 assets/ 下同名前缀文件"]
+    F --> G["最大序号 + 1 = N"]
+
+    G --> H["Rust: save_drawnix"]
+    H --> I["写入 .drawnix 文件"]
+    H --> J["写入 .svg 文件"]
+
+    I --> K{"写入成功?"}
+    J --> K
+
+    K -- 成功 --> L["Rust: readFile 读取源文件"]
+    L --> M["在光标位置插入 Markdown 图片引用"]
+    M --> N["Rust: saveFile 保存文件"]
+
+    N --> O["更新 Vditor 内容"]
+    O --> P["workspaceStore.exitWhiteboard"]
+    P --> Q["恢复光标到锚点位置<br/>切换回 Markdown 视图"]
+
+    K -- 失败 --> R["Toast：保存失败<br/>留在白板模式"]
+
+    style Q fill:#DCFCE7,stroke:#16A34A
+    style R fill:#FEF2F2,stroke:#DC2626
+    </div>
+  </div>
+
+  <!-- ========== 3. 双击编辑已有图 ========== -->
+  <h2>3. 双击编辑已有图</h2>
+
+  <div class="diagram-section">
+    <div class="mermaid">
+flowchart TD
+    A["用户双击 Markdown 中<br>已插入的图片"] --> B["从 img src 解析路径<br>例：./assets/index-img-001.svg"]
+    B --> C["推导 .drawnix 路径<br>将 .svg 替换为 .drawnix"]
+    C --> D{.drawnix 文件存在?}
+
+    D -- 是 --> E["Rust: readFile(drawnixPath)"]
+    E --> F["记录锚点（同新建流程）"]
+    F --> G["加载 Drawnix<br>传入已有 JSON 数据"]
+    G --> H[白板全屏编辑模式]
+    H --> I["顶栏提示：「正在编辑<br>{nearestHeading} 的插图」"]
+
+    D -- 否 --> J["提示：「该图片无可编辑的<br>白板数据」<br>（可能是外部导入的图片）"]
+
+    I --> K{用户操作}
+    K -->|保存并插入| L["更新 .drawnix + 重新导出 .svg"]
+    L --> M["Markdown 引用路径不变<br>SVG 内容自动更新"]
+    M --> N[返回编辑器]
+
+    K -->|ESC 取消| O[不做任何修改，返回编辑器]
+
+    style N fill:#DCFCE7,stroke:#16A34A
+    style J fill:#FEF2F2,stroke:#DC2626
+    </div>
+  </div>
+
+  <!-- ========== 4. 图片编号算法 ========== -->
+  <h2>4. 图片编号算法</h2>
+
+  <div class="diagram-section">
+    <div class="mermaid">
+flowchart LR
+    A["输入：assetsDir + docName"] --> B["扫描 assets/ 目录"]
+    B --> C["过滤匹配 {docName}-img-*"]
+    C --> D["提取所有已有序号"]
+    D --> E["max + 1"]
+    E --> F["返回新序号 N"]
+
+    G["例：assets/ 下已有<br>index-img-001.svg<br>index-img-002.png<br>index-img-001.drawnix"] --> H["过滤 index-img-*<br>序号：1, 2, 1"]
+    H --> I["max=2 → N=3"]
+
+    style F fill:#DCFCE7,stroke:#16A34A
+    </div>
+  </div>
+
+  <h3>命名规范</h3>
+  <table>
+    <tr><th>文件</th><th>命名格式</th><th>示例</th></tr>
+    <tr><td>白板数据</td><td><code>{docName}-img-{N}.drawnix</code></td><td><code>api-overview-img-003.drawnix</code></td></tr>
+    <tr><td>SVG 导出</td><td><code>{docName}-img-{N}.svg</code></td><td><code>api-overview-img-003.svg</code></td></tr>
+    <tr><td>Markdown 引用</td><td><code>![img-{N}](./assets/...)</code></td><td><code>![img-003](./assets/api-overview-img-003.svg)</code></td></tr>
+  </table>
+
+</div>
+
+<script>
+if(typeof mermaid!=='undefined'){mermaid.initialize({startOnLoad:true,theme:'default'})}else{document.querySelectorAll('.mermaid').forEach(function(el){el.style.cssText='padding:16px;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:8px';el.textContent='Mermaid library failed to load. Please check your network connection.'})}
+</script>
+</body>
+</html>

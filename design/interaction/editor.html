@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>交互设计 — Markdown 编辑器</title>
+  <link rel="stylesheet" href="shared-interaction.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.min.js"></script>
+  <script>if(typeof mermaid==='undefined')document.write('<script src="https://unpkg.com/mermaid@11.15.0/dist/mermaid.min.js"><\/script>')</script>
+</head>
+<body>
+
+<nav class="interaction-nav">
+  <span>📖 交互设计：</span>
+  <a href="global.html">全局布局</a>
+  <a href="workspace.html">Workspace</a>
+  <a href="editor.html" class="current">编辑器</a>
+  <a href="whiteboard.html">白板</a>
+  <a href="search.html">搜索</a>
+  <a href="export.html">导出</a>
+</nav>
+
+<div class="container">
+  <h1>Markdown 编辑器</h1>
+  <p class="subtitle">Typora 级即时渲染体验、Markdown 输入触发、快捷键、自动保存、图片悬停预览</p>
+
+  <!-- ========== 1. IR 模式编辑流程 ========== -->
+  <h2>1. IR 即时渲染模式交互（Typora 级体验）</h2>
+
+  <div class="diagram-section">
+    <div class="mermaid">
+flowchart LR
+    A["光标进入段落"] --> B["显示原始 Markdown 语法"]
+    B --> C["用户编辑语法<br/>例：输入 **加粗**"]
+    C --> D["光标仍在该行 - 保持源码显示"]
+    D --> E["光标移到其他行"]
+    E --> F["Lute 引擎增量渲染<br/>SpinVditorIRDOM"]
+    F --> G["源码转为富文本显示"]
+    G --> H["同步更新 Markdown 源文件<br/>VditorIRDOM2Md"]
+
+    style B fill:#DBEAFE,stroke:#2563EB
+    style G fill:#DCFCE7,stroke:#16A34A
+    </div>
+  </div>
+
+  <div class="note">
+    <strong>设计原则：</strong>编辑器交互与 Typora 完全一致。用户输入 Markdown 语法后，光标所在行保持源码显示，光标移开后即时渲染为富文本。唯一的自定义扩展是 <code>/wb</code> 触发画板（见下方）。
+  </div>
+
+  <h3>1.1 Markdown 输入触发</h3>
+  <p>所有语法触发与 Typora 一致，输入对应标记后按空格或回车即刻生效：</p>
+  <table>
+    <tr><th>输入</th><th>触发键</th><th>效果</th><th>备注</th></tr>
+    <tr><td><code>#</code></td><td>空格</td><td>H1 标题</td><td><code>##</code> H2，<code>###</code> H3，依此类推</td></tr>
+    <tr><td><code>*</code> 或 <code>-</code></td><td>空格</td><td>无序列表</td><td>自动缩进续行</td></tr>
+    <tr><td><code>1.</code></td><td>空格</td><td>有序列表</td><td>序号自动递增</td></tr>
+    <tr><td><code>></code></td><td>空格</td><td>引用块</td><td>支持嵌套</td></tr>
+    <tr><td><code>```</code></td><td>回车</td><td>代码块</td><td>可加语言标识：```python</td></tr>
+    <tr><td><code>---</code></td><td>回车</td><td>水平分割线</td><td><code>***</code> 等效</td></tr>
+    <tr><td><code>**文字**</code></td><td>输入闭合</td><td><b>加粗</b></td><td>光标在行时显示星号，离开后渲染</td></tr>
+    <tr><td><code>*文字*</code></td><td>输入闭合</td><td><i>斜体</i></td><td>光标在行时显示星号，离开后渲染</td></tr>
+    <tr><td><code>~~文字~~</code></td><td>输入闭合</td><td><s>删除线</s></td><td>GFM 扩展语法</td></tr>
+    <tr><td><code>[文字](url)</code></td><td>输入闭合</td><td>超链接</td><td>也支持快捷键 Ctrl+K</td></tr>
+    <tr><td><code>![文字](url)</code></td><td>输入闭合</td><td>图片</td><td>本地路径用相对路径</td></tr>
+    <tr><td><code>$公式$</code></td><td>输入闭合</td><td>行内数学公式</td><td>KaTeX 渲染</td></tr>
+    <tr><td><code>$$</code></td><td>回车</td><td>数学公式块</td><td>独立块级公式</td></tr>
+    <tr style="background:#FEF9C3;"><td><code>/wb</code></td><td>空格</td><td>打开画板</td><td>唯一自定义扩展，见白板交互设计</td></tr>
+  </table>
+
+  <h3>1.2 IR 模式渲染规则</h3>
+  <table>
+    <tr><th>场景</th><th>光标在行时显示</th><th>光标离开后渲染</th></tr>
+    <tr>
+      <td>标题行</td>
+      <td><code>## 系统架构</code>（源码）</td>
+      <td><b style="font-size:18px;">系统架构</b></td>
+    </tr>
+    <tr>
+      <td>加粗文字</td>
+      <td><code>**重要内容**</code>（源码）</td>
+      <td><b>重要内容</b></td>
+    </tr>
+    <tr>
+      <td>代码块</td>
+      <td><code>```python\nprint("hello")\n```</code></td>
+      <td>语法高亮代码块</td>
+    </tr>
+    <tr>
+      <td>图片引用</td>
+      <td><code>![img-001](./assets/xxx.svg)</code></td>
+      <td>内联显示图片</td>
+    </tr>
+    <tr>
+      <td>Mermaid 块</td>
+      <td><code>```mermaid\ngraph LR\n...```</code></td>
+      <td>渲染为 SVG 图表</td>
+    </tr>
+  </table>
+
+  <h3>1.3 编辑器快捷键（与 Typora 一致）</h3>
+  <table>
+    <tr><th>快捷键</th><th>动作</th><th>备注</th></tr>
+    <tr><td><span class="tag tag-shortcut">Ctrl+B</span></td><td>加粗</td><td>包裹 ** 或取消</td></tr>
+    <tr><td><span class="tag tag-shortcut">Ctrl+I</span></td><td>斜体</td><td>包裹 * 或取消</td></tr>
+    <tr><td><span class="tag tag-shortcut">Ctrl+K</span></td><td>插入链接</td><td>选中文字变为链接文字</td></tr>
+    <tr><td><span class="tag tag-shortcut">Ctrl+Shift+K</span></td><td>插入代码块</td><td></td></tr>
+    <tr><td><span class="tag tag-shortcut">Ctrl+Shift+I</span></td><td>插入图片</td><td>弹出文件选择或粘贴</td></tr>
+    <tr><td><span class="tag tag-shortcut">Ctrl+\</span></td><td>清除格式</td><td>移除加粗/斜体/链接等</td></tr>
+    <tr><td><span class="tag tag-shortcut">Ctrl+T</span></td><td>插入表格</td><td>弹出行列配置</td></tr>
+    <tr><td><span class="tag tag-shortcut">Ctrl+/</span></td><td>切换源码模式</td><td>临时查看/编辑原始 Markdown</td></tr>
+    <tr><td><span class="tag tag-shortcut">Tab</span></td><td>缩进</td><td>列表项、嵌套引用等</td></tr>
+    <tr><td><span class="tag tag-shortcut">Shift+Tab</span></td><td>反缩进</td><td></td></tr>
+    <tr><td><span class="tag tag-shortcut">Ctrl+Shift+D</span></td><td>打开画板</td><td>等同于输入 /wb + 空格</td></tr>
+    <tr><td><span class="tag tag-shortcut">Ctrl+S</span></td><td>手动保存</td><td>正常由自动保存处理</td></tr>
+    <tr><td><span class="tag tag-shortcut">Ctrl+F</span></td><td>本文档搜索</td><td>当前文档内查找</td></tr>
+    <tr><td><span class="tag tag-shortcut">Ctrl+R</span></td><td>替换</td><td>搜索并替换（需先 Ctrl+F 打开搜索栏）</td></tr>
+    <tr><td><span class="tag tag-shortcut">Ctrl+Shift+F</span></td><td>全局搜索</td><td>跨文档全文检索</td></tr>
+  </table>
+
+  <!-- ========== 2. 自动保存 ========== -->
+  <h2>2. 自动保存时序</h2>
+
+  <div class="diagram-section">
+    <div class="mermaid">
+sequenceDiagram
+    participant U as 用户
+    participant V as Vditor
+    participant H as useAutoSave Hook
+    participant R as Rust (save_file)
+
+    U->>V: 编辑内容
+    Note over V: Lute 增量渲染
+    V->>H: onChange 事件触发
+
+    H->>H: 重置 1s 防抖计时器
+    Note over H: 1秒内无新输入
+
+    H->>H: 防抖结束，标记「保存中」
+    H->>R: invoke('save_file', {path, content})
+
+    alt 保存成功
+        R-->>H: Ok(())
+        H->>V: 更新状态栏：「✓ 已自动保存」
+    else 保存失败
+        R-->>H: Err("写入失败")
+        H->>V: 更新状态栏：「⚠ 保存失败」
+        Note over H: 不重试，等待下次编辑触发
+    end
+    </div>
+  </div>
+
+  <div class="note">
+    <strong>性能要求：</strong>状态栏反馈延迟 < 400ms（Doherty Threshold）。保存操作本身通常 < 50ms（本地磁盘写入），瓶颈在防抖等待的 1 秒。
+  </div>
+
+  <!-- ========== 3. 图片悬停预览 ========== -->
+  <h2>3. 图片悬停预览交互</h2>
+
+  <div class="diagram-section">
+    <div class="mermaid">
+flowchart TD
+    A["鼠标悬停在 img 元素上"] --> B["显示提示: 悬停预览 · 双击编辑"]
+    B --> C{"停留超过 300ms?"}
+    C -- 是 --> D[弹出预览浮层]
+    C -- 否 --> E[不弹出，仅显示提示]
+
+    D --> F[浮层内容：放大图片 + 缩放控制]
+    F --> G{用户操作}
+    G -->|滚轮缩放| H[放大/缩小图片]
+    G -->|鼠标移出浮层| I[关闭浮层]
+    G -->|点击浮层| J[进入全屏预览]
+    G -->|ESC| I
+
+    J --> K[全屏预览：图片居中 + 背景遮罩]
+    K --> L{操作}
+    L -->|ESC| M[退出全屏]
+    L -->|点击遮罩| M
+
+    style D fill:#DBEAFE,stroke:#2563EB
+    style J fill:#DCFCE7,stroke:#16A34A
+    </div>
+  </div>
+
+  <h3>预览浮层参数</h3>
+  <table>
+    <tr><th>参数</th><th>值</th><th>说明</th></tr>
+    <tr><td>触发延迟</td><td>300ms</td><td>避免鼠标快速划过时频繁弹窗</td>
+    <tr><td>浮层最大宽度</td><td>480px</td><td>不超过编辑区宽度的 50%</td>
+    <tr><td>浮层位置</td><td>图片上方居中</td><td>遮挡编辑内容最少</td>
+    <tr><td>支持格式</td><td>png, jpg, jpeg, gif, svg</td><td>svg 直接渲染，其他用 &lt;img&gt;</td>
+    <tr><td>关闭方式</td><td>鼠标移出 / ESC / 点击其他区域</td><td>多种方式确保不打断编辑</td>
+  </table>
+
+  <!-- ========== 4. 编辑器打开文件 ========== -->
+  <h2>4. 打开文件流程</h2>
+
+  <div class="diagram-section">
+    <div class="mermaid">
+flowchart TD
+    A["触发打开文件"] --> B{"触发来源"}
+    B -->|"点击文件树"| C["获取文件路径"]
+    B -->|"搜索结果点击"| C
+    B -->|"最近打开列表"| C
+
+    C --> D{"文件类型"}
+    D -->|".md"| E["Rust: read_file"]
+    D -->|".drawnix"| F["Rust: read_file + 进入白板模式"]
+    D -->|"其他"| G["忽略，不做响应"]
+
+    E --> H["Vditor.setValue(content)"]
+    H --> I["更新面包屑路径"]
+    I --> J["文件树高亮对应节点"]
+    J --> K["状态栏显示文件信息"]
+    K --> L["编辑器就绪，光标定位到顶部"]
+
+    style L fill:#DCFCE7,stroke:#16A34A
+    </div>
+  </div>
+
+</div>
+
+<script>
+if(typeof mermaid!=='undefined'){mermaid.initialize({startOnLoad:true,theme:'default'})}else{document.querySelectorAll('.mermaid').forEach(function(el){el.style.cssText='padding:16px;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:8px';el.textContent='Mermaid library failed to load. Please check your network connection.'})}
+</script>
+</body>
+</html>

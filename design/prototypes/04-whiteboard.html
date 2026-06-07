@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>sy-note-books — 白板画图</title>
+  <link rel="stylesheet" href="shared.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<nav class="proto-nav">
+  <span>sy-note-books Prototypes:</span>
+  <a href="00-overview.html">全局布局</a>
+  <a href="01-welcome.html">欢迎页</a>
+  <a href="02-file-tree.html">文件树</a>
+  <a href="03-editor.html">编辑器</a>
+  <a href="04-whiteboard.html" class="current">白板</a>
+  <a href="05-search.html">搜索</a>
+  <a href="06-export.html">导出</a>
+</nav>
+
+<!-- Full-screen Whiteboard (no sidebar) -->
+<div style="display:flex;flex-direction:column;height:calc(100vh - 32px);">
+  <div class="wb-topbar">
+    <button class="toolbar-btn" onclick="showConfirm()">← 返回</button>
+    <div class="wb-topbar-title">正在为「<strong>API 总览</strong>」段落绘制插图</div>
+    <button class="btn btn-primary" onclick="saveAndInsert()">💾 保存并插入</button>
+  </div>
+  <div class="wb-toolbar">
+    <button class="wb-tool-btn active" onclick="selectTool(this)">🖱 选择</button>
+    <button class="wb-tool-btn" onclick="selectTool(this)">✏️ 画笔</button>
+    <button class="wb-tool-btn" onclick="selectTool(this)">T 文本</button>
+    <button class="wb-tool-btn" onclick="selectTool(this)">▭ 矩形</button>
+    <button class="wb-tool-btn" onclick="selectTool(this)">◯ 椭圆</button>
+    <button class="wb-tool-btn" onclick="selectTool(this)">→ 箭头</button>
+    <button class="wb-tool-btn" onclick="selectTool(this)">Mind Map</button>
+    <button class="wb-tool-btn" onclick="selectTool(this)">Flowchart</button>
+    <div class="toolbar-separator"></div>
+    <button class="wb-tool-btn" onclick="showToast('撤销')">↩</button>
+    <button class="wb-tool-btn" onclick="showToast('重做')">↪</button>
+    <button class="wb-tool-btn" style="color:var(--accent-red);" onclick="showToast('已删除选中元素')">🗑</button>
+  </div>
+  <div class="canvas-area">
+    <div class="canvas-content">
+      <svg width="500" height="300" viewBox="0 0 500 300">
+        <defs><marker id="ar" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#94A3B8"/></marker></defs>
+        <rect x="30" y="30" width="150" height="55" rx="8" fill="#DBEAFE" stroke="#2563EB" stroke-width="2"/>
+        <text x="105" y="63" text-anchor="middle" fill="#1E293B" font-size="13" font-weight="500">客户端请求</text>
+        <line x1="180" y1="57" x2="230" y2="57" stroke="#94A3B8" stroke-width="2" marker-end="url(#ar)"/>
+        <rect x="230" y="30" width="150" height="55" rx="8" fill="#DCFCE7" stroke="#16A34A" stroke-width="2"/>
+        <text x="305" y="63" text-anchor="middle" fill="#1E293B" font-size="13" font-weight="500">API 网关</text>
+        <line x1="305" y1="85" x2="305" y2="130" stroke="#94A3B8" stroke-width="2" marker-end="url(#ar)"/>
+        <rect x="230" y="130" width="150" height="55" rx="8" fill="#FEF9C3" stroke="#CA8A04" stroke-width="2"/>
+        <text x="305" y="163" text-anchor="middle" fill="#1E293B" font-size="13" font-weight="500">业务服务</text>
+        <line x1="380" y1="157" x2="420" y2="157" stroke="#94A3B8" stroke-width="2" marker-end="url(#ar)"/>
+        <rect x="420" y="130" width="60" height="55" rx="8" fill="#F1F5F9" stroke="#94A3B8" stroke-width="2"/>
+        <text x="450" y="163" text-anchor="middle" fill="#64748B" font-size="12">DB</text>
+        <text x="250" y="230" fill="#94A3B8" font-size="12">双击元素可编辑文本，拖拽可移动位置</text>
+      </svg>
+    </div>
+    <div class="canvas-zoom-controls">
+      <button class="canvas-zoom-btn" onclick="zoom(-10)">−</button>
+      <span class="canvas-zoom-level" id="zoomLevel">100%</span>
+      <button class="canvas-zoom-btn" onclick="zoom(10)">＋</button>
+    </div>
+  </div>
+  <div class="status-bar">
+    <span>Drawnix 白板</span><span style="flex:1;"></span><span>画布 1920 × 1080</span><span>缩放 100%</span>
+  </div>
+</div>
+
+<!-- Confirm Dialog -->
+<div class="overlay" id="confirmDialog" style="display:none;">
+  <div class="confirm-dialog">
+    <div class="confirm-dialog-title">放弃当前绘制？</div>
+    <div class="confirm-dialog-text">未保存的内容将会丢失。</div>
+    <div style="display:flex;justify-content:center;gap:8px;">
+      <button class="btn btn-ghost" onclick="hideConfirm()">取消</button>
+      <button class="btn btn-primary" onclick="goBack()">放弃并返回</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+function selectTool(btn){document.querySelectorAll('.wb-tool-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active')}
+function saveAndInsert(){showToast('✓ 保存并插入成功')}
+function showConfirm(){document.getElementById('confirmDialog').style.display='flex'}
+function hideConfirm(){document.getElementById('confirmDialog').style.display='none'}
+function goBack(){hideConfirm();showToast('已返回编辑器')}
+let zoomVal=100;
+function zoom(d){zoomVal=Math.max(25,Math.min(400,zoomVal+d));document.getElementById('zoomLevel').textContent=zoomVal+'%'}
+function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.className='toast success open';setTimeout(()=>{t.className='toast'},2500)}
+</script>
+</body>
+</html>

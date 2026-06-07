@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>sy-note-books — 导出</title>
+  <link rel="stylesheet" href="shared.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<nav class="proto-nav">
+  <span>sy-note-books Prototypes:</span>
+  <a href="00-overview.html">全局布局</a>
+  <a href="01-welcome.html">欢迎页</a>
+  <a href="02-file-tree.html">文件树</a>
+  <a href="03-editor.html">编辑器</a>
+  <a href="04-whiteboard.html">白板</a>
+  <a href="05-search.html">搜索</a>
+  <a href="06-export.html" class="current">导出</a>
+</nav>
+
+<div class="app-shell">
+  <aside class="sidebar" style="width:260px;">
+    <div class="sidebar-header"><button class="sidebar-btn" title="返回 Workspace 管理" onclick="location.href='01-welcome.html'" style="margin-right:4px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button><span>我的技术文档</span><div class="sidebar-actions"><button class="sidebar-btn">＋</button></div></div>
+    <div class="file-tree">
+      <div class="tree-item folder" data-expanded="true"><span class="tree-icon">▼</span><span>📁 入门指南</span></div>
+      <div class="tree-item" style="padding-left:32px;"><span class="tree-icon">📄</span><span>快速开始</span></div>
+      <div class="tree-item folder" data-expanded="true"><span class="tree-icon">▼</span><span>📁 系统架构</span></div>
+      <div class="tree-item active" style="padding-left:32px;"><span class="tree-icon">📄</span><span>API 总览</span></div>
+    </div>
+    <div style="padding:var(--sp-2) var(--sp-3); border-top:1px solid rgba(255,255,255,0.06); font-size:11px; color:#64748B;">2 章节 · 2 页面</div>
+  </aside>
+  <div class="sidebar-resize"></div>
+  <main class="main-area">
+    <div class="toolbar">
+      <button class="toolbar-btn">💾</button>
+      <div class="toolbar-spacer"></div>
+      <button class="toolbar-btn" onclick="showExportModal()">📦 导出</button>
+    </div>
+    <div class="breadcrumb"><span>系统架构</span><span class="breadcrumb-sep">›</span><span class="breadcrumb-current">API 总览</span></div>
+    <div class="editor-area">
+      <h1>API 总览</h1>
+      <p>← 点击工具栏「📦 导出」按钮，体验完整导出流程</p>
+    </div>
+    <div class="status-bar"><span>Markdown</span><span>UTF-8</span><span>✓ 已自动保存</span><span style="flex:1;"></span><span>行 1, 列 1</span></div>
+  </main>
+</div>
+
+<!-- Export Modal -->
+<div class="overlay" id="exportModal" style="display:none;">
+  <div class="modal" style="max-width:560px;" id="exportContent">
+    <!-- Step 1: Config -->
+    <div id="stepConfig">
+      <div class="modal-title">📦 导出配置</div>
+
+      <div style="display:flex;gap:12px;margin-bottom:20px;">
+        <div class="export-card selected" id="cardChm" onclick="selectType('chm')">
+          <div class="export-card-icon">📘</div>
+          <div class="export-card-title">CHM</div>
+          <div class="export-card-desc">Windows 帮助文件</div>
+        </div>
+        <div class="export-card" id="cardNginx" onclick="selectType('nginx')">
+          <div class="export-card-icon">🌐</div>
+          <div class="export-card-title">Nginx</div>
+          <div class="export-card-desc">静态网站目录</div>
+        </div>
+        <div class="export-card" id="cardPdf" onclick="selectType('pdf')">
+          <div class="export-card-icon">📄</div>
+          <div class="export-card-title">PDF</div>
+          <div class="export-card-desc">当前文件打印</div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">导出范围</label>
+        <select class="form-input" id="exportScope">
+          <option>整个 Workspace</option>
+          <option>入门指南</option>
+          <option>系统架构</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">书名覆盖（可选）</label>
+        <input class="form-input" type="text" placeholder="留空使用 workspace.json 中的书名" id="exportTitle">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">作者覆盖（可选）</label>
+        <input class="form-input" type="text" placeholder="留空使用 workspace.json 中的作者" id="exportAuthor">
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="hideExportModal()">取消</button>
+        <button class="btn btn-primary" onclick="startExport()">开始导出</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Progress -->
+    <div id="stepProgress" style="display:none;">
+      <div class="modal-title">正在导出...</div>
+      <div class="progress-bar" style="margin:20px 0;">
+        <div class="progress-bar-fill" id="progressFill" style="width:0%;"></div>
+      </div>
+      <div style="font-size:13px;color:var(--main-text-secondary);margin-bottom:12px;" id="progressText">准备中...</div>
+      <div style="font-size:12px;color:#94A3B8;" id="progressDetail">清理 temp/ 目录</div>
+    </div>
+
+    <!-- Step 3: Success -->
+    <div id="stepSuccess" style="display:none;text-align:center;">
+      <div style="font-size:48px;margin-bottom:12px;">✅</div>
+      <div class="modal-title">导出成功</div>
+      <p style="font-size:13px;color:var(--main-text-secondary);margin-bottom:20px;" id="successPath">已导出到 dist/api-docs/chm-v2/</p>
+      <div style="display:flex;justify-content:center;gap:8px;">
+        <button class="btn btn-primary" onclick="hideExportModal()">另存为...</button>
+        <button class="btn btn-secondary" onclick="showToast('已打开文件管理器')">打开文件夹</button>
+        <button class="btn btn-ghost" onclick="hideExportModal()">关闭</button>
+      </div>
+    </div>
+
+    <!-- Step 3b: Error -->
+    <div id="stepError" style="display:none;text-align:center;">
+      <div style="font-size:48px;margin-bottom:12px;">❌</div>
+      <div class="modal-title" style="color:var(--accent-red);">导出失败</div>
+      <p style="font-size:13px;color:var(--main-text-secondary);margin-bottom:20px;">磁盘空间不足，无法写入输出文件。</p>
+      <div style="display:flex;justify-content:center;gap:8px;">
+        <button class="btn btn-primary" onclick="resetExport()">重试</button>
+        <button class="btn btn-ghost" onclick="hideExportModal()">关闭</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let exportType = 'chm';
+
+function showExportModal(){document.getElementById('exportModal').style.display='flex';resetExport()}
+function hideExportModal(){document.getElementById('exportModal').style.display='none';resetExport()}
+function resetExport(){document.getElementById('stepConfig').style.display='';document.getElementById('stepProgress').style.display='none';document.getElementById('stepSuccess').style.display='none';document.getElementById('stepError').style.display='none'}
+
+function selectType(t){
+  exportType=t;
+  ['cardChm','cardNginx','cardPdf'].forEach(id=>document.getElementById(id).classList.remove('selected'));
+  document.getElementById('card'+t.charAt(0).toUpperCase()+t.slice(1)).classList.add('selected');
+  const scope=document.getElementById('exportScope');
+  if(t==='pdf'){scope.value='当前文件';scope.disabled=true}
+  else{scope.disabled=false}
+}
+
+function startExport(){
+  document.getElementById('stepConfig').style.display='none';
+  document.getElementById('stepProgress').style.display='';
+  const fill=document.getElementById('progressFill');
+  const text=document.getElementById('progressText');
+  const detail=document.getElementById('progressDetail');
+  const steps=[
+    {p:10,t:'清理临时文件...',d:'清理 temp/'},
+    {p:30,t:'启动导出引擎...',d:'Python 子进程已启动'},
+    {p:60,t:'生成输出文件...',d:'处理 Markdown → HTML'},
+    {p:85,t:'写入磁盘...',d:'写入 dist/api-docs/chm-v2/'},
+    {p:100,t:'完成！',d:'清理 temp/ 目录'}
+  ];
+  let i=0;
+  const iv=setInterval(()=>{
+    if(i>=steps.length){clearInterval(iv);
+      document.getElementById('stepProgress').style.display='none';
+      document.getElementById('stepSuccess').style.display='';
+      return;
+    }
+    fill.style.width=steps[i].p+'%';
+    text.textContent=steps[i].t;
+    detail.textContent=steps[i].d;
+    i++;
+  },600);
+}
+
+function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.className='toast success open';setTimeout(()=>{t.className='toast'},2500)}
+</script>
+</body>
+</html>

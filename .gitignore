@@ -1,0 +1,13 @@
+node_modules/
+dist/
+target/
+src-tauri/target/
+*.local
+.env
+.claude/session-data/
+.claude/plans/
+.pnpm-store/
+*.pyc
+__pycache__/
+.vite/
+src-tauri/binaries/synote-export-*

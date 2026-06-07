@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>sy-note-books — 搜索</title>
+  <link rel="stylesheet" href="shared.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<nav class="proto-nav">
+  <span>sy-note-books Prototypes:</span>
+  <a href="00-overview.html">全局布局</a>
+  <a href="01-welcome.html">欢迎页</a>
+  <a href="02-file-tree.html">文件树</a>
+  <a href="03-editor.html">编辑器</a>
+  <a href="04-whiteboard.html">白板</a>
+  <a href="05-search.html" class="current">搜索</a>
+  <a href="06-export.html">导出</a>
+</nav>
+
+<div class="app-shell">
+  <aside class="sidebar" style="width:260px;">
+    <div class="sidebar-header"><button class="sidebar-btn" title="返回 Workspace 管理" onclick="location.href='01-welcome.html'" style="margin-right:4px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button><span>我的技术文档</span><div class="sidebar-actions"><button class="sidebar-btn">＋</button></div></div>
+    <div class="file-tree">
+      <div class="tree-item folder" data-expanded="true"><span class="tree-icon">▼</span><span>📁 入门指南</span></div>
+      <div class="tree-item" style="padding-left:32px;"><span class="tree-icon">📄</span><span>快速开始</span></div>
+      <div class="tree-item" style="padding-left:32px;"><span class="tree-icon">📄</span><span>安装说明</span></div>
+      <div class="tree-item folder" data-expanded="true"><span class="tree-icon">▼</span><span>📁 系统架构</span></div>
+      <div class="tree-item" style="padding-left:32px;"><span class="tree-icon">📄</span><span>架构概览</span></div>
+      <div class="tree-item active" style="padding-left:32px;"><span class="tree-icon">📄</span><span>API 总览</span></div>
+      <div class="tree-item folder" data-expanded="false"><span class="tree-icon">▶</span><span>📁 API 参考</span></div>
+    </div>
+    <div style="padding:var(--sp-2) var(--sp-3); border-top:1px solid rgba(255,255,255,0.06); font-size:11px; color:#64748B;">3 章节 · 4 页面</div>
+  </aside>
+  <div class="sidebar-resize"></div>
+  <main class="main-area">
+    <div class="toolbar">
+      <button class="toolbar-btn">💾</button><button class="toolbar-btn">↩</button><button class="toolbar-btn">↪</button>
+      <div class="toolbar-separator"></div>
+      <button class="toolbar-btn"><b>B</b></button><button class="toolbar-btn"><i>I</i></button>
+      <div class="toolbar-spacer"></div>
+      <button class="toolbar-btn" style="color:var(--primary);">✏️ 画图</button>
+      <button class="toolbar-btn" onclick="toggleDocSearch()">🔍</button>
+    </div>
+    <div class="breadcrumb"><span>系统架构</span><span class="breadcrumb-sep">›</span><span class="breadcrumb-current">架构概览</span></div>
+
+    <div class="editor-area" id="editorArea" style="position:relative;">
+      <!-- Ctrl+F Document Search Bar -->
+      <div class="doc-search-bar" id="docSearchBar">
+        <div class="doc-search-row">
+          <span style="color:var(--main-text-secondary);">🔍</span>
+          <input type="text" placeholder="查找..." value="API" oninput="updateHighlights()">
+          <span class="doc-search-count">第 2/7 个</span>
+          <button class="doc-search-btn">↑</button>
+          <button class="doc-search-btn">↓</button>
+          <button class="doc-search-btn" onclick="this.classList.toggle('active')">Aa</button>
+          <button class="doc-search-btn" onclick="this.classList.toggle('active')">.*</button>
+          <button class="doc-search-btn" onclick="document.getElementById('docReplaceRow').classList.toggle('open')">⇧</button>
+          <button class="doc-search-btn-close" onclick="toggleDocSearch()">×</button>
+        </div>
+        <div class="doc-replace-row" id="docReplaceRow">
+          <input type="text" placeholder="替换为...">
+          <button class="btn btn-secondary" style="font-size:12px;padding:2px 8px;">替换</button>
+          <button class="btn btn-secondary" style="font-size:12px;padding:2px 8px;">全部替换</button>
+        </div>
+      </div>
+
+      <h1>架构概览</h1>
+      <p>本文档描述系统的整体架构设计。系统采用微服务架构，<span class="search-highlight">API</span> 网关负责路由和认证。</p>
+      <h2>系统组件</h2>
+      <p>系统由以下核心组件构成：</p>
+      <ul>
+        <li><span class="search-highlight">API</span> 网关 — 请求路由、认证、限流</li>
+        <li>业务服务 — 核心业务逻辑处理</li>
+        <li>数据层 — PostgreSQL + Redis 缓存</li>
+        <li>消息队列 — RabbitMQ 异步通信</li>
+      </ul>
+      <h2>技术选型</h2>
+      <p>后端使用 Go 语言开发，<span class="search-highlight">API</span> 网关基于 Kong，前端使用 React 19。</p>
+    </div>
+    <div class="status-bar"><span>Markdown</span><span>UTF-8</span><span>✓ 已自动保存</span><span style="flex:1;"></span><span>行 8, 列 15</span></div>
+  </main>
+</div>
+
+<!-- Ctrl+Shift+F Global Search Overlay -->
+<div class="search-overlay" id="globalSearch" style="display:none;">
+  <div class="search-dialog">
+    <div class="search-input-wrap">
+      <span>🔍</span>
+      <input type="text" placeholder="搜索全部文档..." id="globalSearchInput" value="API" oninput="filterResults()">
+      <div style="display:flex;gap:4px;">
+        <button class="doc-search-btn active" id="tabAll" onclick="switchTab('all')">全部</button>
+        <button class="doc-search-btn" id="tabFile" onclick="switchTab('file')">文件名</button>
+        <button class="doc-search-btn" id="tabContent" onclick="switchTab('content')">内容</button>
+      </div>
+      <span style="font-size:11px;color:#94A3B8;">Ctrl+Shift+F</span>
+    </div>
+    <div class="search-results" id="searchResults">
+      <div class="search-result-item" onclick="openResult(this)">
+        <div class="search-result-title">API 总览</div>
+        <div class="search-result-path">系统架构 &gt; API 总览</div>
+        <div class="search-result-snippet">...所有 <span class="search-highlight">API</span> 请求需要在 Header 中携带 Bearer Token...</div>
+      </div>
+      <div class="search-result-item" onclick="openResult(this)">
+        <div class="search-result-title">架构概览</div>
+        <div class="search-result-path">系统架构 &gt; 架构概览</div>
+        <div class="search-result-snippet">...系统采用微服务架构，<span class="search-highlight">API</span> 网关负责路由和认证...</div>
+      </div>
+      <div class="search-result-item" onclick="openResult(this)">
+        <div class="search-result-title">架构概览</div>
+        <div class="search-result-path">系统架构 &gt; 架构概览</div>
+        <div class="search-result-snippet">...后端使用 Go 语言开发，<span class="search-highlight">API</span> 网关基于 Kong...</div>
+      </div>
+      <div class="search-result-item" onclick="openResult(this)">
+        <div class="search-result-title">用户接口</div>
+        <div class="search-result-path">API 参考 &gt; 用户接口</div>
+        <div class="search-result-snippet">...GET /users — 获取用户列表的 <span class="search-highlight">API</span> 端点...</div>
+      </div>
+      <div class="search-result-item" onclick="openResult(this)">
+        <div class="search-result-title">安装说明</div>
+        <div class="search-result-path">入门指南 &gt; 安装说明</div>
+        <div class="search-result-snippet">...配置 <span class="search-highlight">API</span> 密钥前需要先注册开发者账号...</div>
+      </div>
+    </div>
+    <div style="padding:8px 16px;font-size:11px;color:#94A3B8;border-top:1px solid var(--surface-3);">
+      找到 5 个结果 · ↑↓ 导航 · Enter 打开 · ESC 关闭
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+function toggleDocSearch(){document.getElementById('docSearchBar').classList.toggle('open')}
+function toggleGlobalSearch(){document.getElementById('globalSearch').style.display=document.getElementById('globalSearch').style.display==='none'?'flex':'none'}
+function switchTab(t){['tabAll','tabFile','tabContent'].forEach(id=>document.getElementById(id).classList.remove('active'));document.getElementById('tab'+t.charAt(0).toUpperCase()+t.slice(1)).classList.add('active')}
+function openResult(el){toggleGlobalSearch();showToast('✓ 已打开文件并跳转到匹配位置')}
+function filterResults(){/* placeholder */}
+function updateHighlights(){/* placeholder */}
+function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.className='toast success open';setTimeout(()=>{t.className='toast'},2500)}
+</script>
+</body>
+</html>

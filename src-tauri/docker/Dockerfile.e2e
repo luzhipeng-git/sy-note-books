@@ -1,0 +1,34 @@
+# Incremental E2E image: extends existing tauri-builder with E2E testing dependencies
+# Builds on top of the existing tauri-builder:latest image (Fedora 40 + Rust + webkit2gtk)
+# Only adds what's missing: webkit2gtk-driver, Xvfb, Node.js, pnpm, tauri-driver
+#
+# Build:
+#   docker build -t synote-tauri:e2e -f src-tauri/docker/Dockerfile.e2e src-tauri/docker/
+#
+# Or with build-arg to use a different base:
+#   docker build --build-arg BASE_IMAGE=tauri-builder:latest -t synote-tauri:e2e -f src-tauri/docker/Dockerfile.e2e src-tauri/docker/
+
+ARG BASE_IMAGE=tauri-builder:latest
+FROM ${BASE_IMAGE}
+
+# Install missing system dependencies for E2E testing
+RUN dnf install -y \
+    webkit2gtk-driver \
+    xvfb \
+    xorg-x11-server-Xvfb \
+    dbus-x11 \
+    nodejs \
+    npm \
+    && dnf clean all
+
+# Install pnpm
+RUN npm install -g pnpm@latest
+
+# Install tauri-driver (WebDriver server for Tauri apps)
+RUN cargo install tauri-driver --locked
+
+# Working directory
+WORKDIR /workspace
+
+# Default: interactive shell
+CMD ["bash"]

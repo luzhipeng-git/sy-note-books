@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>sy-note-books — 文件树交互</title>
+  <link rel="stylesheet" href="shared.css">
+  <style>
+    .sidebar-collapsed-icons { display:flex; flex-direction:column; align-items:center; gap:4px; width:100%; }
+    .sidebar-collapsed-icon { width:32px; height:28px; display:flex; align-items:center; justify-content:center; font-size:14px; border-radius:4px; cursor:pointer; opacity:0.6; }
+    .sidebar-collapsed-icon:hover { opacity:1; background:#334155; }
+  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<nav class="proto-nav">
+  <span>sy-note-books Prototypes:</span>
+  <a href="00-overview.html">全局布局</a>
+  <a href="01-welcome.html">欢迎页</a>
+  <a href="02-file-tree.html" class="current">文件树</a>
+  <a href="03-editor.html">编辑器</a>
+  <a href="04-whiteboard.html">白板</a>
+  <a href="05-search.html">搜索</a>
+  <a href="06-export.html">导出</a>
+</nav>
+
+<div class="app-shell">
+  <!-- Expanded Sidebar -->
+  <aside class="sidebar" id="sidebar" style="width:280px; transition: width 200ms ease; overflow:hidden;">
+    <div class="sidebar-header">
+      <button class="sidebar-btn" title="收起侧边栏" onclick="toggleSidebar()" style="margin-right:4px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <span id="sidebarTitle">我的技术文档</span>
+      <div class="sidebar-actions" id="sidebarActions">
+        <button class="sidebar-btn" title="新建章节" onclick="showNewPageModal(null)">＋</button>
+        <button class="sidebar-btn" title="返回 Workspace 管理" onclick="location.href='01-welcome.html'">🌐</button>
+      </div>
+    </div>
+    <div id="sidebarBody">
+    <div class="file-tree" id="fileTree">
+      <div class="tree-item folder" onclick="toggleFolder(this)" data-expanded="true" oncontextmenu="showCtx(event,'chapter','入门指南')">
+        <span class="tree-icon">▼</span><span>📁 入门指南</span>
+      </div>
+      <div class="tree-item" style="padding-left:32px;" onclick="selectFile(this)" oncontextmenu="showCtx(event,'file','快速开始')">
+        <span class="tree-icon">📄</span><span>快速开始</span>
+      </div>
+      <div class="tree-item" style="padding-left:32px;" onclick="selectFile(this)" oncontextmenu="showCtx(event,'file','安装说明')">
+        <span class="tree-icon">📄</span><span>安装说明</span>
+      </div>
+      <div class="tree-item" style="padding-left:32px; font-size:11px; color:#64748B;" onclick="toggleAssets(this)">
+        <span class="tree-icon">🖼</span><span>🖼️ 资源 (3)</span>
+      </div>
+      <div class="asset-items" style="display:none;">
+        <div class="tree-item" style="padding-left:48px; font-size:11px; color:#64748B;"><span class="tree-icon">🖼</span><span>index-img-001.svg</span></div>
+        <div class="tree-item" style="padding-left:48px; font-size:11px; color:#64748B;"><span class="tree-icon">🖼</span><span>index-img-002.png</span></div>
+        <div class="tree-item" style="padding-left:48px; font-size:11px; color:#64748B;"><span class="tree-icon">✏️</span><span>index-img-001.drawnix</span></div>
+      </div>
+
+      <div class="tree-item folder" onclick="toggleFolder(this)" data-expanded="true" oncontextmenu="showCtx(event,'chapter','系统架构')">
+        <span class="tree-icon">▼</span><span>📁 系统架构</span>
+      </div>
+      <div class="tree-item" style="padding-left:32px;" onclick="selectFile(this)" oncontextmenu="showCtx(event,'file','架构概览')">
+        <span class="tree-icon">📄</span><span>架构概览</span>
+      </div>
+      <div class="tree-item active" style="padding-left:32px;" onclick="selectFile(this)" oncontextmenu="showCtx(event,'file','API 总览')">
+        <span class="tree-icon">📄</span><span>API 总览</span>
+      </div>
+      <div class="tree-item" style="padding-left:32px;" onclick="selectFile(this)" oncontextmenu="showCtx(event,'file','数据库设计')">
+        <span class="tree-icon">📄</span><span>数据库设计</span>
+      </div>
+
+      <div class="tree-item folder" onclick="toggleFolder(this)" data-expanded="false" oncontextmenu="showCtx(event,'chapter','API 参考')">
+        <span class="tree-icon">▶</span><span>📁 API 参考</span>
+      </div>
+      <div class="tree-item" style="padding-left:32px; display:none;"><span class="tree-icon">📄</span><span>用户接口</span></div>
+      <div class="tree-item" style="padding-left:32px; display:none;"><span class="tree-icon">📄</span><span>订单接口</span></div>
+
+      <div class="tree-item folder" onclick="toggleFolder(this)" data-expanded="true" oncontextmenu="showCtx(event,'chapter','附录')">
+        <span class="tree-icon">▼</span><span>📁 附录</span>
+      </div>
+      <div class="tree-item" style="padding-left:32px;" onclick="selectFile(this)" oncontextmenu="showCtx(event,'file','FAQ')">
+        <span class="tree-icon">📄</span><span>FAQ</span>
+      </div>
+      <div class="tree-item missing" style="padding-left:32px;" title="文件缺失：磁盘上未找到对应 .md 文件" oncontextmenu="showCtx(event,'file','更新日志')">
+        <span class="tree-icon">📄</span><span>更新日志</span>
+      </div>
+    </div>
+    <div style="padding:var(--sp-2) var(--sp-3); border-top:1px solid rgba(255,255,255,0.06); font-size:11px; color:#64748B;">
+      4 个章节 · 7 个页面
+    </div>
+    </div><!-- /sidebarBody -->
+  </aside>
+  <div class="sidebar-resize"></div>
+  <main class="main-area">
+    <div class="toolbar">
+      <button class="toolbar-btn">💾</button><button class="toolbar-btn">↩</button><button class="toolbar-btn">↪</button>
+      <div class="toolbar-separator"></div>
+      <button class="toolbar-btn"><b>B</b></button><button class="toolbar-btn"><i>I</i></button>
+      <div class="toolbar-spacer"></div>
+      <button class="toolbar-btn" style="color:var(--primary);">✏️ 画图</button>
+      <button class="toolbar-btn">🔍</button>
+    </div>
+    <div class="breadcrumb"><span>系统架构</span><span class="breadcrumb-sep">›</span><span class="breadcrumb-current">API 总览</span></div>
+    <div class="editor-area">
+      <h1>文件树交互演示</h1>
+      <p style="color:var(--accent-orange);">← 右键点击左侧文件树节点，体验完整交互</p>
+      <p style="color:var(--main-text-secondary); font-size:13px;">
+        右键 <b>章节</b>：新建子页面 / 重命名 / 删除<br>
+        右键 <b>文件</b>：重命名 / 删除<br>
+        「附录 > 更新日志」展示 <b style="color:var(--accent-red);">缺失状态</b>（灰色+斜体）<br>
+        点击「🖼️ 资源 (N)」展开资源列表
+      </p>
+    </div>
+    <div class="status-bar"><span>Markdown</span><span>UTF-8</span><span>✓ 已自动保存</span><span style="flex:1;"></span><span>行 1, 列 1</span></div>
+  </main>
+</div>
+
+<div class="context-menu" id="ctxMenu"></div>
+<div class="overlay" id="newPageModal" style="display:none;">
+  <div class="modal" style="max-width:380px;">
+    <div class="modal-title">新建子页面</div>
+    <div class="form-group">
+      <label class="form-label">页面标题</label>
+      <input class="form-input" type="text" placeholder="输入页面标题" id="newPageTitle">
+      <div style="font-size:12px;color:var(--accent-red);display:none;margin-top:4px;" id="newPageError"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="hideModal('newPageModal')">取消</button>
+      <button class="btn btn-primary" onclick="createPage()">创建</button>
+    </div>
+  </div>
+</div>
+<div class="overlay" id="deleteModal" style="display:none;">
+  <div class="confirm-dialog">
+    <div class="confirm-dialog-title">确定删除「<span id="deleteTarget"></span>」？</div>
+    <div class="confirm-dialog-text">将删除对应文件夹及所有内容，此操作不可撤销。</div>
+    <div style="display:flex;justify-content:center;gap:8px;">
+      <button class="btn btn-ghost" onclick="hideModal('deleteModal')">取消</button>
+      <button class="btn btn-primary" style="background:var(--accent-red);" onclick="hideModal('deleteModal');showToast('✓ 已删除')">删除</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+function toggleFolder(el){const x=el.dataset.expanded==='true';el.dataset.expanded=!x;el.querySelector('.tree-icon').textContent=x?'▶':'▼';let n=el.nextElementSibling;while(n&&!n.classList.contains('folder')){if(!n.classList.contains('asset-items'))n.style.display=x?'none':'';n=n.nextElementSibling}}
+function toggleAssets(el){const a=el.nextElementSibling;a.style.display=a.style.display==='none'?'':'none'}
+function selectFile(el){if(el.classList.contains('missing'))return;document.querySelectorAll('.tree-item').forEach(i=>i.classList.remove('active'));el.classList.add('active')}
+function collapseAll(){document.querySelectorAll('.tree-item.folder').forEach(f=>{f.dataset.expanded='false';f.querySelector('.tree-icon').textContent='▶';let n=f.nextElementSibling;while(n&&!n.classList.contains('folder')){n.style.display='none';n=n.nextElementSibling}})}
+
+function showCtx(e,type,name){e.preventDefault();const m=document.getElementById('ctxMenu');let h='';if(type==='chapter'){h='<div class="context-menu-item" onclick="showNewPageModal()">新建子页面</div><div class="context-menu-item" onclick="hideCtx();showToast(\'原位编辑模式\')">重命名</div><div class="context-menu-sep"></div><div class="context-menu-item danger" onclick="showDeleteModal(\''+name+'\')">删除</div>'}else{h='<div class="context-menu-item" onclick="hideCtx();showToast(\'原位编辑模式\')">重命名</div><div class="context-menu-sep"></div><div class="context-menu-item danger" onclick="showDeleteModal(\''+name+'\')">删除</div>'}m.innerHTML=h;m.style.left=e.clientX+'px';m.style.top=e.clientY+'px';m.classList.add('open');document.addEventListener('click',hideCtx)}
+function hideCtx(){document.getElementById('ctxMenu').classList.remove('open');document.removeEventListener('click',hideCtx)}
+function showNewPageModal(){hideCtx();document.getElementById('newPageModal').style.display='flex';document.getElementById('newPageError').style.display='none';document.getElementById('newPageTitle').value=''}
+function showDeleteModal(n){hideCtx();document.getElementById('deleteTarget').textContent=n;document.getElementById('deleteModal').style.display='flex'}
+function hideModal(id){document.getElementById(id).style.display='none'}
+function createPage(){const t=document.getElementById('newPageTitle').value.trim();const e=document.getElementById('newPageError');if(!t){e.textContent='标题不能为空';e.style.display='block';return}const xs=document.querySelectorAll('.tree-item span');for(const s of xs){if(s.textContent===t){e.textContent='该标题已存在';e.style.display='block';return}}hideModal('newPageModal');showToast('✓ 子页面「'+t+'」创建成功')}
+function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.className='toast success open';setTimeout(()=>{t.className='toast'},2500)}
+
+function toggleSidebar(){
+  const sb=document.getElementById('sidebar');
+  const body=document.getElementById('sidebarBody');
+  const title=document.getElementById('sidebarTitle');
+  const actions=document.getElementById('sidebarActions');
+  const collapsed=sb.dataset.collapsed==='true';
+  if(collapsed){
+    sb.style.width='280px';
+    sb.dataset.collapsed='false';
+    body.style.display='';
+    title.style.display='';
+    actions.style.display='';
+    sb.querySelectorAll('.sidebar-collapsed-icons').forEach(e=>e.remove());
+  }else{
+    sb.style.width='42px';
+    sb.dataset.collapsed='true';
+    body.style.display='none';
+    title.style.display='none';
+    actions.style.display='none';
+    const icons=document.createElement('div');
+    icons.className='sidebar-collapsed-icons';
+    icons.innerHTML='<button class="sidebar-btn" title="展开侧边栏" onclick="toggleSidebar()" style="margin-bottom:4px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></button><button class="sidebar-btn" title="返回 Workspace 管理" onclick="location.href=\'01-welcome.html\'">🌐</button><div style="width:100%;height:1px;background:rgba(255,255,255,0.08);margin:4px 0"></div><div class="sidebar-collapsed-icon" title="入门指南">📁</div><div class="sidebar-collapsed-icon" title="系统架构">📁</div><div class="sidebar-collapsed-icon" title="API 参考">📁</div>';
+    sb.appendChild(icons);
+  }
+}
+</script>
+</body>
+</html>

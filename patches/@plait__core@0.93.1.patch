@@ -1,0 +1,191 @@
+diff --git a/fesm2022/plait-core.mjs b/fesm2022/plait-core.mjs
+index 90b5e62870273fc4e1b3d0d255239958587f2ee8..8af71e3a7f4e06df86e10d2b3692099494e39831 100644
+--- a/fesm2022/plait-core.mjs
++++ b/fesm2022/plait-core.mjs
+@@ -2218,7 +2218,9 @@ const BoardTransforms = {
+ };
+ 
+ const getViewBox = (board) => {
+-    return PlaitBoard.getHost(board).viewBox.baseVal;
++    const host = PlaitBoard.getHost(board);
++    if (!host) return { x: 0, y: 0, width: 0, height: 0 }; // patched: null guard
++    return host.viewBox.baseVal;
+ };
+ /**
+  * Get the screen point starting from the upper left corner of the svg element (based on the svg screen coordinate system)
+@@ -2226,6 +2228,7 @@ const getViewBox = (board) => {
+  */
+ function toHostPoint(board, x, y) {
+     const host = PlaitBoard.getHost(board);
++    if (!host) return [x, y]; // patched: null guard for init race
+     const rect = host.getBoundingClientRect();
+     return [x - rect.x, y - rect.y];
+ }
+@@ -2245,11 +2248,13 @@ function toActivePointFromViewBoxPoint(board, point) {
+  */
+ function toActivePoint(board, x, y) {
+     const boardContainer = PlaitBoard.getBoardContainer(board);
++    if (!boardContainer) return [x, y]; // patched: null guard for init race
+     const rect = boardContainer.getBoundingClientRect();
+     return [x - rect.x, y - rect.y];
+ }
+ function toScreenPointFromActivePoint(board, activePoint) {
+     const boardContainer = PlaitBoard.getBoardContainer(board);
++    if (!boardContainer) return activePoint; // patched: null guard
+     const rect = boardContainer.getBoundingClientRect();
+     return [rect.x + activePoint[0], rect.y + activePoint[1]];
+ }
+@@ -2277,6 +2282,7 @@ function toViewBoxPoints(board, hostPoints) {
+  */
+ function toScreenPointFromHostPoint(board, hostPoint) {
+     const host = PlaitBoard.getHost(board);
++    if (!host) return hostPoint; // patched: null guard
+     const rect = host.getBoundingClientRect();
+     return [hostPoint[0] + rect.x, hostPoint[1] + rect.y];
+ }
+@@ -2297,7 +2303,9 @@ const IS_FROM_VIEWPORT_CHANGE = new WeakMap();
+ function getViewportContainerRect(board) {
+     const { hideScrollbar } = board.options;
+     const scrollBarWidth = hideScrollbar ? SCROLL_BAR_WIDTH : 0;
+-    const viewportRect = PlaitBoard.getBoardContainer(board).getBoundingClientRect();
++    const boardContainer = PlaitBoard.getBoardContainer(board);
++    if (!boardContainer) return { width: 0, height: 0 }; // patched: null guard
++    const viewportRect = boardContainer.getBoundingClientRect();
+     return {
+         width: viewportRect.width + scrollBarWidth,
+         height: viewportRect.height + scrollBarWidth
+@@ -3130,12 +3138,14 @@ function isSelectionMoving(board) {
+     return !!BOARD_TO_IS_SELECTION_MOVING.get(board);
+ }
+ function setSelectionMoving(board) {
+-    PlaitBoard.getBoardContainer(board).classList.add('selection-moving');
++    const c = PlaitBoard.getBoardContainer(board);
++    if (c) c.classList.add('selection-moving'); // patched: null guard
+     BOARD_TO_IS_SELECTION_MOVING.set(board, true);
+     setDragging(board, true);
+ }
+ function clearSelectionMoving(board) {
+-    PlaitBoard.getBoardContainer(board).classList.remove('selection-moving');
++    const c = PlaitBoard.getBoardContainer(board);
++    if (c) c.classList.remove('selection-moving'); // patched: null guard
+     BOARD_TO_IS_SELECTION_MOVING.delete(board);
+     setDragging(board, false);
+ }
+@@ -4374,7 +4384,7 @@ const PlaitBoard = {
+         throw new Error(`Unable to find the path for Plait node: ${JSON.stringify(node)}`);
+     },
+     getHost(board) {
+-        return BOARD_TO_HOST.get(board);
++        return BOARD_TO_HOST.get(board) || null;
+     },
+     getElementLowerHost(board) {
+         return BOARD_TO_ELEMENT_HOST.get(board)?.lowerHost;
+@@ -4392,10 +4402,10 @@ const PlaitBoard = {
+         return BOARD_TO_ELEMENT_HOST.get(board)?.activeHost;
+     },
+     getRoughSVG(board) {
+-        return BOARD_TO_ROUGH_SVG.get(board);
++        return BOARD_TO_ROUGH_SVG.get(board) || null;
+     },
+     getBoardContainer(board) {
+-        return BOARD_TO_ELEMENT_HOST.get(board)?.container;
++        return BOARD_TO_ELEMENT_HOST.get(board)?.container || null;
+     },
+     getBoardContext(board) {
+         return BOARD_TO_CONTEXT.get(board);
+@@ -4404,7 +4414,7 @@ const PlaitBoard = {
+         return getRectangleByElements(board, board.children, true);
+     },
+     getViewportContainer(board) {
+-        return BOARD_TO_ELEMENT_HOST.get(board)?.viewportContainer;
++        return BOARD_TO_ELEMENT_HOST.get(board)?.viewportContainer || null;
+     },
+     isFocus(board) {
+         return !!board.selection;
+@@ -4430,7 +4440,9 @@ const PlaitBoard = {
+     },
+     isMovingPointInBoard(board) {
+         const point = BOARD_TO_MOVING_POINT.get(board);
+-        const rect = PlaitBoard.getBoardContainer(board).getBoundingClientRect();
++        const boardContainer = PlaitBoard.getBoardContainer(board);
++        if (!boardContainer) return false; // patched: null guard for init race
++        const rect = boardContainer.getBoundingClientRect();
+         if (point && distanceBetweenPointAndRectangle(point[0], point[1], rect) === 0) {
+             return true;
+         }
+@@ -5773,7 +5785,7 @@ function withHandPointer(board) {
+                 y: event.y
+             };
+             if (!PlaitBoard.isPointer(board, PlaitPointerType.hand)) {
+-                PlaitBoard.getBoardContainer(board).classList.add('viewport-moving');
++                (PlaitBoard.getBoardContainer(board))?.classList.add('viewport-moving');
+             }
+         }
+         else if (isWheelPointer(event)) {
+@@ -5848,7 +5860,7 @@ function withHandPointer(board) {
+             if (!board.options.readonly && !PlaitBoard.isPointer(board, PlaitPointerType.hand)) {
+                 beingPressedShortcutKey = true;
+                 setSelectionOptions(board, { isDisabledSelection: true });
+-                PlaitBoard.getBoardContainer(board).classList.add('viewport-moving');
++                (PlaitBoard.getBoardContainer(board))?.classList.add('viewport-moving');
+             }
+             event.preventDefault();
+         }
+@@ -5858,18 +5870,18 @@ function withHandPointer(board) {
+         if (!board.options.readonly && event.code === ShortcutKey) {
+             beingPressedShortcutKey = false;
+             setSelectionOptions(board, { isDisabledSelection: false });
+-            PlaitBoard.getBoardContainer(board).classList.remove('viewport-moving');
++            (PlaitBoard.getBoardContainer(board))?.classList.remove('viewport-moving');
+         }
+         keyUp(event);
+     };
+     const enterHandMode = () => {
+         isHandMoving = true;
+-        PlaitBoard.getBoardContainer(board).classList.add('viewport-moving');
++        (PlaitBoard.getBoardContainer(board))?.classList.add('viewport-moving');
+         IS_HAND_MODE.set(board, true);
+     };
+     const exitHandMode = () => {
+         isHandMoving = false;
+-        PlaitBoard.getBoardContainer(board).classList.remove('viewport-moving');
++        (PlaitBoard.getBoardContainer(board))?.classList.remove('viewport-moving');
+         setTimeout(() => {
+             IS_HAND_MODE.set(board, false);
+         }, 0);
+@@ -6287,7 +6299,7 @@ function withMoving(board) {
+             if (pendingNodesG && startPoint && activeElements.length && !PlaitBoard.hasBeenTextEditing(board)) {
+                 event.preventDefault();
+                 const currentElements = updatePoints(board, activeElements, offsetX, offsetY);
+-                PlaitBoard.getBoardContainer(board).classList.add('element-moving');
++                (PlaitBoard.getBoardContainer(board))?.classList.add('element-moving');
+                 cacheMovingElements(board, currentElements);
+             }
+         }
+@@ -6377,7 +6389,7 @@ function withMoving(board) {
+                     }
+                     else {
+                         const currentElements = updatePoints(board, activeElements, offsetX, offsetY);
+-                        PlaitBoard.getBoardContainer(board).classList.add('element-moving');
++                        (PlaitBoard.getBoardContainer(board))?.classList.add('element-moving');
+                         cacheMovingElements(board, currentElements);
+                     }
+                 });
+@@ -6426,7 +6438,7 @@ function withMoving(board) {
+             removeMovingElements(board);
+         }
+         MERGING.set(board, false);
+-        PlaitBoard.getBoardContainer(board).classList.remove('element-moving');
++        (PlaitBoard.getBoardContainer(board))?.classList.remove('element-moving');
+     }
+     return withArrowMoving(board);
+ }
+@@ -6681,7 +6693,7 @@ function withSelection(board) {
+         }
+         const options = getSelectionOptions(board);
+         if (PlaitBoard.isFocus(board) && !options.isPreventClearSelection) {
+-            const isInBoard = event.target instanceof Node && PlaitBoard.getBoardContainer(board).contains(event.target);
++            const isInBoard = event.target instanceof Node && (PlaitBoard.getBoardContainer(board))?.contains(event.target);
+             const isInDocument = event.target instanceof Node && document.contains(event.target);
+             const isAttachedElement = event.target instanceof Element && event.target.closest(`.${ATTACHED_ELEMENT_CLASS_NAME}`);
+             // Clear selection when mouse board outside area

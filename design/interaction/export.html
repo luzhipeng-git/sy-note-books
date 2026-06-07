@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>交互设计 — 导出</title>
+  <link rel="stylesheet" href="shared-interaction.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.min.js"></script>
+  <script>if(typeof mermaid==='undefined')document.write('<script src="https://unpkg.com/mermaid@11.15.0/dist/mermaid.min.js"><\/script>')</script>
+</head>
+<body>
+
+<nav class="interaction-nav">
+  <span>📖 交互设计：</span>
+  <a href="global.html">全局布局</a>
+  <a href="workspace.html">Workspace</a>
+  <a href="editor.html">编辑器</a>
+  <a href="whiteboard.html">白板</a>
+  <a href="search.html">搜索</a>
+  <a href="export.html" class="current">导出</a>
+</nav>
+
+<div class="container">
+  <h1>导出</h1>
+  <p class="subtitle">CHM / Nginx / PDF 导出配置、进度反馈、错误处理、文件管理</p>
+
+  <!-- ========== 1. 导出主流程 ========== -->
+  <h2>1. 导出操作主流程</h2>
+
+  <div class="diagram-section">
+    <div class="mermaid">
+flowchart TD
+    A["用户点击「📦 导出」<br>或菜单触发"] --> B["弹出导出配置对话框"]
+
+    B --> C["选择导出类型"]
+    C --> D{类型}
+
+    D -->|CHM| E["CHM 配置面板<br>范围：整个WS / 单章节"]
+    D -->|Nginx| F["Nginx 配置面板<br>范围：整个WS / 单章节"]
+    D -->|PDF| G["PDF 配置面板<br>范围：当前文件"]
+
+    E --> H["元信息覆盖<br>书名 / 作者"]
+    F --> H
+    G --> H
+
+    H --> I["用户点击「开始导出」"]
+
+    I --> J["Rust: 预清理 temp/"]
+    J --> K["Rust: 启动导出引擎"]
+    K --> L["进度条反馈"]
+
+    L --> M{引擎执行结果}
+
+    M -- 成功 --> N["进度 100%"]
+    N --> O["Rust: 清理 temp/"]
+    O --> P["Rust: 滚动版本号<br>（dist/ 下保留最近 3 个）"]
+    P --> Q["显示成功状态<br>「另存为」/「打开文件夹」"]
+
+    M -- 失败 --> R["进度条停止 + 红色"]
+    R --> S["保留 temp/ 供排查"]
+    S --> T["显示错误信息<br>「导出失败：{原因}」<br>重试按钮"]
+
+    Q --> U{用户操作}
+    U -->|另存为| V["系统保存对话框<br>复制 dist/ 产物到用户路径"]
+    U -->|打开文件夹| W["打开文件管理器<br>定位到 dist/ 目录"]
+    U -->|关闭| X["关闭对话框"]
+
+    style Q fill:#DCFCE7,stroke:#16A34A
+    style T fill:#FEF2F2,stroke:#DC2626
+    </div>
+  </div>
+
+  <!-- ========== 2. 三种导出类型差异 ========== -->
+  <h2>2. 导出类型差异对比</h2>
+
+  <table>
+    <tr><th>维度</th><th>CHM</th><th>Nginx</th><th>PDF</th></tr>
+    <tr>
+      <td>导出范围</td>
+      <td>整个 WS / 单章节</td>
+      <td>整个 WS / 单章节</td>
+      <td>当前文件</td>
+    </tr>
+    <tr>
+      <td>引擎位置</td>
+      <td>Python 子进程</td>
+      <td>Python 子进程</td>
+      <td>WebView printToPDF</td>
+    </tr>
+    <tr>
+      <td>输出格式</td>
+      <td>单个 .chm 文件</td>
+      <td>目录（含 HTML/JS/CSS）</td>
+      <td>系统打印对话框 → PDF</td>
+    </tr>
+    <tr>
+      <td>耗时预估</td>
+      <td>5–30 秒</td>
+      <td>10–60 秒</td>
+      <td>即开打印对话框</td>
+    </tr>
+    <tr>
+      <td>版本管理</td>
+      <td>dist/{ws}/chm-v{N}</td>
+      <td>dist/{ws}/nginx-v{N}</td>
+      <td>无（用户自选路径）</td>
+    </tr>
+  </table>
+
+  <!-- ========== 3. PDF 导出特殊流程 ========== -->
+  <h2>3. PDF 导出流程（半自动模式）</h2>
+
+  <div class="diagram-section">
+    <div class="mermaid">
+flowchart TD
+    A["用户按 Ctrl+P<br>或点击「导出为 PDF」"] --> B["Vditor.getHTML()<br>获取渲染后的 HTML"]
+
+    B --> C["创建隐藏 &lt;iframe&gt;"]
+    C --> D["注入 HTML + 打印样式<br>@media print"]
+
+    D --> E["等待图片加载完成"]
+    E --> F["iframe.contentWindow.print()"]
+
+    F --> G["系统弹出打印对话框"]
+    G --> H{用户操作}
+
+    H -->|选择「另存为 PDF」| I["系统生成 PDF 文件<br>用户选择保存路径"]
+    H -->|取消| J["关闭打印对话框"]
+
+    I --> K["销毁 iframe"]
+    J --> K
+
+    style G fill:#DBEAFE,stroke:#2563EB
+    style K fill:#DCFCE7,stroke:#16A34A
+    </div>
+  </div>
+
+  <!-- ========== 4. 导出文件管理 ========== -->
+  <h2>4. 导出文件版本管理</h2>
+
+  <div class="diagram-section">
+    <div class="mermaid">
+flowchart TD
+    A["触发导出"] --> B["检查 dist/{ws}/ 下<br>已有版本"]
+
+    B --> C["确定新版本号<br>同类型 max+1"]
+
+    C --> D["引擎输出到<br>dist/{ws}/{type}-v{N}/"]
+    D --> E{同类型版本数 > 3?}
+
+    E -- 是 --> F["删除最早版本<br>如 chm-v1 被删除<br>nginx 版本不受影响"]
+    E -- 否 --> G["保留所有版本"]
+
+    F --> H["保持每种类型<br>最近 3 个版本"]
+    G --> H
+
+    style H fill:#DCFCE7,stroke:#16A34A
+    </div>
+  </div>
+
+  <div class="note">
+    <strong>版本独立管理：</strong>CHM 和 Nginx 版本号互不影响。新导出 chm-v4 → 删除 chm-v1，nginx 版本不变。
+  </div>
+
+  <!-- ========== 5. 错误处理 ========== -->
+  <h2>5. 导出错误处理</h2>
+
+  <table>
+    <tr><th>错误场景</th><th>检测时机</th><th>反馈方式</th><th>恢复策略</th></tr>
+    <tr>
+      <td>磁盘空间不足</td>
+      <td>Rust 写入时</td>
+      <td>Toast：「磁盘空间不足，导出失败」</td>
+      <td>显示重试按钮</td>
+    </tr>
+    <tr>
+      <td>Python 引擎未找到</td>
+      <td>子进程启动时</td>
+      <td>Toast：「导出引擎缺失，请重新安装」</td>
+      <td>显示帮助链接</td>
+    </tr>
+    <tr>
+      <td>引擎执行超时（5 分钟）</td>
+      <td>Rust 超时检测</td>
+      <td>进度条变红 + 「导出超时」</td>
+      <td>重试按钮 + 保留 temp/</td>
+    </tr>
+    <tr>
+      <td>源文件被删除/移动</td>
+      <td>引擎读文件时</td>
+      <td>Toast：「文件不存在：{路径}」</td>
+      <td>提示检查文件树</td>
+    </tr>
+    <tr>
+      <td>用户取消保存对话框</td>
+      <td>前端 saveAs 返回</td>
+      <td>无提示</td>
+      <td>产物仍保留在 dist/ 下</td>
+    </tr>
+  </table>
+
+</div>
+
+<script>
+if(typeof mermaid!=='undefined'){mermaid.initialize({startOnLoad:true,theme:'default'})}else{document.querySelectorAll('.mermaid').forEach(function(el){el.style.cssText='padding:16px;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:8px';el.textContent='Mermaid library failed to load. Please check your network connection.'})}
+</script>
+</body>
+</html>

@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>交互设计 — 全局布局与快捷键</title>
+  <link rel="stylesheet" href="shared-interaction.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.min.js"></script>
+  <script>if(typeof mermaid==='undefined')document.write('<script src="https://unpkg.com/mermaid@11.15.0/dist/mermaid.min.js"><\/script>')</script>
+</head>
+<body>
+
+<nav class="interaction-nav">
+  <span>📖 交互设计：</span>
+  <a href="global.html" class="current">全局布局</a>
+  <a href="workspace.html">Workspace</a>
+  <a href="editor.html">编辑器</a>
+  <a href="whiteboard.html">白板</a>
+  <a href="search.html">搜索</a>
+  <a href="export.html">导出</a>
+</nav>
+
+<div class="container">
+  <h1>全局布局与视图切换</h1>
+  <p class="subtitle">定义 AppShell 的三栏布局规则、视图状态切换、以及全局快捷键体系</p>
+
+  <!-- ========== 1. 视图状态机 ========== -->
+  <h2>1. 视图状态机</h2>
+  <p>应用的主视图有三种状态，由 <code>activeEditorType</code> + <code>rootPath</code> 组合控制：</p>
+
+  <div class="diagram-section">
+    <div class="mermaid">
+stateDiagram-v2
+    [*] --> Welcome : 启动应用（rootPath=null）
+
+    Welcome --> WorkspaceEmpty : 打开 workspace
+    WorkspaceEmpty --> Markdown : 点击文件树中的 .md 文件
+
+    Markdown --> Whiteboard : Ctrl+Shift+D
+    Markdown --> Whiteboard : 输入 /wb 空格
+    Markdown --> Whiteboard : 双击已有 .svg 图片
+    Markdown --> WorkspaceEmpty : 关闭文件
+
+    Whiteboard --> Markdown : 保存并插入
+    Whiteboard --> Markdown : ESC 取消 / 点击返回
+
+    WorkspaceEmpty --> Welcome : Sidebar 头部 ← 按钮
+    Markdown --> Welcome : Sidebar 头部 ← 按钮
+
+    note right of Welcome
+        rootPath=null
+        欢迎页：最近打开列表
+        + 新建/打开按钮
+    end note
+
+    note right of WorkspaceEmpty
+        rootPath有值, 无选中文件
+        右侧空白提示
+        「从左侧选择文件开始编辑」
+    end note
+
+    note right of Markdown
+        Vditor IR 模式
+        工具栏 + 面包屑
+        自动保存
+    end note
+
+    note right of Whiteboard
+        Drawnix 全屏
+        锚点信息栏
+        保存并插入按钮
+    end note
+    </div>
+  </div>
+
+  <!-- ========== 2. 布局尺寸规范 ========== -->
+  <h2>2. 布局尺寸规范</h2>
+
+  <div class="diagram-section">
+    <div class="mermaid">
+graph LR
+    subgraph AppShell["AppShell (100vw × 100vh)"]
+        direction TB
+        subgraph Sidebar["Sidebar"]
+            S1["Header: 42px"]
+            S2["FileTree: flex 1"]
+            S3["Footer: 24px"]
+        end
+        subgraph Main["MainArea"]
+            direction TB
+            T["Toolbar: 42px"]
+            B["Breadcrumb: 32px"]
+            E["Editor: flex 1"]
+            St["StatusBar: 24px"]
+        end
+    end
+
+    Sidebar -- "可拖拽调整<br>min:200px<br>default:260px<br>max:400px" --> Main
+    </div>
+  </div>
+
+  <h3>Sidebar 折叠/展开状态</h3>
+  <table>
+    <tr><th>状态</th><th>宽度</th><th>显示内容</th><th>触发</th></tr>
+    <tr>
+      <td>展开</td>
+      <td>260px（可拖拽 200–400px）</td>
+      <td>Header（◀ 折叠 + 标题 + 操作按钮）<br>文件树（完整文字）<br>Footer（章节数统计）</td>
+      <td>默认状态 / 点击折叠条的 ▶ 按钮</td>
+    </tr>
+    <tr>
+      <td>折叠</td>
+      <td>42px</td>
+      <td>▶ 展开按钮<br>🌐 返回 Workspace 管理按钮<br>分隔线<br>📁 章节图标（最多5个，hover 显示名称）</td>
+      <td>点击 Header 的 ◀ 按钮</td>
+    </tr>
+  </table>
+  <p>折叠/展开有 200ms ease CSS 过渡动画。折叠状态通过 settingsStore.sidebarCollapsed 持久化。折叠时隐藏 resize handle。</p>
+
+  <h3>布局参数</h3>
+  <table>
+    <tr><th>区域</th><th>尺寸</th><th>说明</th></tr>
+    <tr><td>Sidebar 宽度</td><td>260px（默认）</td><td>可拖拽调整，200–400px，记忆用户偏好</td></tr>
+    <tr><td>Sidebar 折叠宽度</td><td>42px</td><td>仅图标条，隐藏文字和 resize handle</td></tr>
+    <tr><td>折叠/展开过渡</td><td>200ms ease</td><td>CSS transition 平滑动画</td></tr>
+    <tr><td>Toolbar 高度</td><td>42px</td><td>固定，不随内容滚动</td></tr>
+    <tr><td>Breadcrumb 高度</td><td>32px</td><td>固定，显示当前文件路径</td></tr>
+    <tr><td>Editor 区域</td><td>flex: 1</td><td>剩余空间，内容超出时纵向滚动</td></tr>
+    <tr><td>Status Bar 高度</td><td>24px</td><td>固定，显示文件类型/编码/保存状态/行列</td></tr>
+  </table>
+
+  <!-- ========== 3. 全局快捷键 ========== -->
+  <h2>3. 全局快捷键体系</h2>
+
+  <table>
+    <tr><th>快捷键</th><th>触发条件</th><th>动作</th><th>冲突检测</th></tr>
+    <tr>
+      <td><span class="tag tag-shortcut">Ctrl+F</span></td>
+      <td>Markdown 视图</td>
+      <td>本文档搜索</td>
+      <td>白板全屏时拦截</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-shortcut">Ctrl+R</span></td>
+      <td>搜索栏打开时</td>
+      <td>展开替换输入框</td>
+      <td>需先 Ctrl+F 打开搜索栏</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-shortcut">Ctrl+Shift+F</span></td>
+      <td>任意视图</td>
+      <td>唤起全局搜索对话框</td>
+      <td>白板全屏时拦截，不触发</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-shortcut">Ctrl+Shift+D</span></td>
+      <td>Markdown 视图</td>
+      <td>进入白板全屏模式</td>
+      <td>Empty 视图时提示「请先打开文件」</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-shortcut">Ctrl+P</span></td>
+      <td>Markdown 视图</td>
+      <td>导出当前文件为 PDF</td>
+      <td>白板全屏时拦截</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-shortcut">Ctrl+S</span></td>
+      <td>Markdown 视图</td>
+      <td>手动保存（正常由自动保存处理）</td>
+      <td>无冲突，防抖已保存则显示「已保存」</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-shortcut">ESC</span></td>
+      <td>白板全屏</td>
+      <td>取消并返回编辑器，恢复光标</td>
+      <td>搜索对话框打开时关闭搜索</td>
+    </tr>
+  </table>
+
+  <div class="note">
+    <strong>快捷键优先级：</strong>白板全屏模式拥有最高优先级，仅 ESC 生效。搜索对话框打开时，ESC 关闭搜索，其他快捷键不触发。
+  </div>
+
+  <!-- ========== 4. 主题切换 ========== -->
+  <h2>4. 主题切换</h2>
+
+  <div class="diagram-section">
+    <div class="mermaid">
+flowchart LR
+    A[用户点击主题切换] --> B{当前主题}
+    B -- Light --> C[切换到 Dark]
+    B -- Dark --> D[切换到 Light]
+    C --> E[更新 CSS 变量]
+    D --> E
+    E --> F[保存偏好到 settingsStore]
+    F --> G[侧边栏 + 编辑器 + 白板同步切换]
+    </div>
+  </div>
+
+</div>
+
+<script>
+if(typeof mermaid!=='undefined'){mermaid.initialize({startOnLoad:true,theme:'default'})}else{document.querySelectorAll('.mermaid').forEach(function(el){el.style.cssText='padding:16px;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:8px';el.textContent='Mermaid library failed to load. Please check your network connection.'})}
+</script>
+</body>
+</html>

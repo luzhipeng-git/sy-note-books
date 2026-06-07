@@ -1,0 +1,33 @@
+# Docker build context is the project root (not src-tauri/docker/).
+# Only copy what the deps stage needs: manifests, patches, and Cargo files.
+
+# ── Exclude everything not needed for dependency caching ──
+node_modules/
+dist/
+src-tauri/target/
+.vite/
+*.log
+.git/
+.gitignore
+
+# ── Exclude test artifacts ──
+e2e-tests/node_modules/
+e2e-tests/screenshots/
+e2e-tests/reports/
+e2e-tests/specs/
+e2e-tests/helpers/
+e2e-tests/wdio.conf.ts
+
+# ── Exclude source code (deps stage only needs manifests) ──
+src/
+src-tauri/src/
+src-tauri/core/src/
+
+# ── Exclude dev/CI files ──
+.claude/
+.vscode/
+design/
+docs/
+scripts/
+*.md
+!src-tauri/Cargo.md

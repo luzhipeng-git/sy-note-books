@@ -1,0 +1,66 @@
+diff --git a/fesm2022/plait-common.mjs b/fesm2022/plait-common.mjs
+index 61489cf8497393389c3b2a86057b44b18013e175..ac2fb166dcc17bcf469a013fb2a2b4ab886f5e80 100644
+--- a/fesm2022/plait-common.mjs
++++ b/fesm2022/plait-common.mjs
+@@ -291,12 +291,12 @@ const isResizingByCondition = (board, match) => {
+     return isResizing(board) && match(IS_RESIZING.get(board));
+ };
+ const addResizing = (board, resizeRef, key) => {
+-    PlaitBoard.getBoardContainer(board).classList.add(`${key}-resizing`);
++    (PlaitBoard.getBoardContainer(board))?.classList?.add(`${key}-resizing`);
+     IS_RESIZING.set(board, resizeRef);
+     setDragging(board, true);
+ };
+ const removeResizing = (board, key) => {
+-    PlaitBoard.getBoardContainer(board).classList.remove(`${key}-resizing`);
++    (PlaitBoard.getBoardContainer(board))?.classList?.remove(`${key}-resizing`);
+     IS_RESIZING.delete(board);
+     setDragging(board, false);
+ };
+@@ -1233,12 +1233,12 @@ const isRotating = (board) => {
+     return !!IS_ROTATING.get(board);
+ };
+ const addRotating = (board, rotateRef) => {
+-    PlaitBoard.getBoardContainer(board).classList.add(`draw-elements-rotating`);
++    (PlaitBoard.getBoardContainer(board))?.classList?.add(`draw-elements-rotating`);
+     IS_ROTATING.set(board, rotateRef);
+     setDragging(board, true);
+ };
+ const removeRotating = (board) => {
+-    PlaitBoard.getBoardContainer(board).classList.remove(`draw-elements-rotating`);
++    (PlaitBoard.getBoardContainer(board))?.classList?.remove(`draw-elements-rotating`);
+     IS_ROTATING.delete(board);
+     setDragging(board, false);
+ };
+@@ -1680,7 +1680,7 @@ const withResize = (board, options) => {
+         resizeHitTestRef = options.hitTest(point);
+         if (resizeHitTestRef) {
+             if (resizeHitTestRef.cursorClass) {
+-                PlaitBoard.getBoardContainer(board).classList.add(`${resizeHitTestRef.cursorClass}`);
++                (PlaitBoard.getBoardContainer(board))?.classList?.add(`${resizeHitTestRef.cursorClass}`);
+             }
+             startPoint = [event.x, event.y];
+             const path = Array.isArray(resizeHitTestRef.element)
+@@ -1719,11 +1719,11 @@ const withResize = (board, options) => {
+                 const hitTestRef = options.hitTest(point);
+                 if (hitTestRef) {
+                     if (hoverHitTestRef && hitTestRef.cursorClass !== hoverHitTestRef.cursorClass) {
+-                        PlaitBoard.getBoardContainer(board).classList.remove(`${hoverHitTestRef.cursorClass}`);
++                        (PlaitBoard.getBoardContainer(board))?.classList?.remove(`${hoverHitTestRef.cursorClass}`);
+                     }
+                     hoverHitTestRef = hitTestRef;
+                     if (hoverHitTestRef.cursorClass) {
+-                        PlaitBoard.getBoardContainer(board).classList.add(`${hoverHitTestRef.cursorClass}`);
++                        (PlaitBoard.getBoardContainer(board))?.classList?.add(`${hoverHitTestRef.cursorClass}`);
+                     }
+                 }
+                 else {
+@@ -1763,7 +1763,7 @@ const withResize = (board, options) => {
+     const clearHoverHitTestRef = () => {
+         if (hoverHitTestRef) {
+             if (hoverHitTestRef.cursorClass) {
+-                PlaitBoard.getBoardContainer(board).classList.remove(`${hoverHitTestRef.cursorClass}`);
++                (PlaitBoard.getBoardContainer(board))?.classList?.remove(`${hoverHitTestRef.cursorClass}`);
+             }
+             hoverHitTestRef = null;
+         }

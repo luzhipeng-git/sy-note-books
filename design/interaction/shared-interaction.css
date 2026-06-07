@@ -1,0 +1,54 @@
+/* Interaction Design Shared Styles */
+:root {
+  --primary: #2563EB;
+  --text: #1E293B;
+  --text-secondary: #64748B;
+  --bg: #FFFFFF;
+  --surface: #F8FAFC;
+  --border: #E2E8F0;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Inter', -apple-system, sans-serif; font-size: 14px; color: var(--text); background: var(--bg); line-height: 1.6; }
+
+/* Nav */
+.interaction-nav {
+  background: #1E293B; color: #CBD5E1; padding: 10px 20px;
+  display: flex; gap: 20px; flex-wrap: wrap; font-size: 12px; align-items: center;
+  position: sticky; top: 0; z-index: 100;
+}
+.interaction-nav span { color: white; font-weight: 600; }
+.interaction-nav a { color: #93C5FD; text-decoration: none; }
+.interaction-nav a:hover { color: white; }
+.interaction-nav a.current { color: white; font-weight: 600; border-bottom: 2px solid var(--primary); padding-bottom: 2px; }
+
+/* Container */
+.container { max-width: 960px; margin: 0 auto; padding: 32px 24px; }
+
+h1 { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+h2 { font-size: 18px; font-weight: 600; margin-top: 40px; margin-bottom: 12px; color: var(--primary); }
+h3 { font-size: 15px; font-weight: 600; margin-top: 24px; margin-bottom: 8px; }
+.subtitle { color: var(--text-secondary); margin-bottom: 32px; }
+
+/* Mermaid diagram area */
+.diagram-section {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 24px; margin: 16px 0 24px; overflow-x: auto;
+}
+.diagram-section .mermaid { display: flex; justify-content: center; }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; font-size: 13px; }
+th { background: var(--surface); text-align: left; padding: 8px 12px; border-bottom: 2px solid var(--border); font-weight: 600; }
+td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+tr:hover { background: #F8FAFC; }
+
+/* Tags */
+.tag { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 500; }
+.tag-trigger { background: #DBEAFE; color: #1E40AF; }
+.tag-response { background: #DCFCE7; color: #166534; }
+.tag-error { background: #FEF2F2; color: #991B1B; }
+.tag-shortcut { background: #F1F5F9; color: #475569; font-family: monospace; }
+
+/* Note blocks */
+.note { background: #FFFBEB; border-left: 3px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 0 6px 6px 0; font-size: 13px; }
+.note strong { color: #92400E; }

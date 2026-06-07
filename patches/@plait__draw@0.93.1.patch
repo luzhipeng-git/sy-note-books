@@ -1,0 +1,386 @@
+diff --git a/fesm2022/plait-draw.mjs b/fesm2022/plait-draw.mjs
+index 179de48ab5aacfed2bbb8b450a2e1952d06159a6..a4636c130e85d82baa8bb9734265f7ccad384df4 100644
+--- a/fesm2022/plait-draw.mjs
++++ b/fesm2022/plait-draw.mjs
+@@ -1413,7 +1413,7 @@ const drawArrowLine = (board, element) => {
+     let points = getArrowLinePoints(board, element);
+     let line;
+     if (element.shape === ArrowLineShape.curve) {
+-        line = PlaitBoard.getRoughSVG(board).curve(points, options);
++        line = (PlaitBoard.getRoughSVG(board))?.curve(points, options);
+     }
+     else {
+         line = drawLinearPath(points, options);
+@@ -1792,7 +1792,7 @@ function generateCloudPath(rectangle) {
+ }
+ const CloudEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const { startPoint, arcCommands } = generateCloudPath(rectangle);
+         const pathData = `M ${startPoint[0]} ${startPoint[1]} ` +
+             arcCommands
+@@ -3038,7 +3038,7 @@ const setTextSize = (board, element, width, height) => {
+ 
+ const insertImage = (board, imageItem, startPoint) => {
+     const { width, height, url } = imageItem;
+-    const viewportWidth = PlaitBoard.getBoardContainer(board).clientWidth;
++    const viewportWidth = (PlaitBoard.getBoardContainer(board))?.clientWidth;
+     const viewportHeight = PlaitBoard.getBoardContainer(board).clientHeight;
+     const point = toViewBoxPoint(board, toHostPoint(board, viewportWidth / 2, viewportHeight / 2));
+     const points = startPoint
+@@ -4084,7 +4084,7 @@ const heightRatio$1 = 3 / 4;
+ const CommentEngine = {
+     draw(board, rectangle, options) {
+         const points = getCommentPoints(rectangle);
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const polygon = rs.polygon(points, { ...options, fillStyle: 'solid' });
+         setStrokeLinecap(polygon, 'round');
+         return polygon;
+@@ -4131,7 +4131,7 @@ function createPolygonEngine(options) {
+     const engine = {
+         draw(board, rectangle, options) {
+             const points = getPoints(rectangle);
+-            const rs = PlaitBoard.getRoughSVG(board);
++            const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+             const polygon = rs.polygon(points, { ...options, fillStyle: 'solid' });
+             setStrokeLinecap(polygon, 'round');
+             return polygon;
+@@ -4221,7 +4221,7 @@ function createEllipseEngine(createOptions) {
+     const engine = {
+         draw(board, rectangle, options) {
+             const centerPoint = [rectangle.x + rectangle.width / 2, rectangle.y + rectangle.height / 2];
+-            const rs = PlaitBoard.getRoughSVG(board);
++            const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+             const shape = rs.ellipse(centerPoint[0], centerPoint[1], rectangle.width, rectangle.height, { ...options, fillStyle: 'solid' });
+             setStrokeLinecap(shape, 'round');
+             return shape;
+@@ -4527,7 +4527,7 @@ function getNearestPointBetweenPointAndRoundRectangle$1(point, rectangle, radius
+ const heightRatio = 3 / 4;
+ const RoundCommentEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const x1 = rectangle.x;
+         const y1 = rectangle.y;
+         const x2 = rectangle.x + rectangle.width;
+@@ -4863,7 +4863,7 @@ const MergeEngine = createPolygonEngine({
+ 
+ const DelayEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const shape = rs.path(`M${rectangle.x} ${rectangle.y} L${rectangle.x + (rectangle.width * 3) / 4} ${rectangle.y} A  ${rectangle.width / 4} ${rectangle.height / 2}, 0, 0, 1,${rectangle.x + (rectangle.width * 3) / 4} ${rectangle.y + rectangle.height} L${rectangle.x} ${rectangle.y + rectangle.height} Z`, { ...options, fillStyle: 'solid' });
+         setStrokeLinecap(shape, 'round');
+         return shape;
+@@ -4904,7 +4904,7 @@ const DelayEngine = {
+ 
+ const StoredDataEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const shape = rs.path(`M${rectangle.x + rectangle.width / 10} ${rectangle.y} L${rectangle.x + rectangle.width} ${rectangle.y} A  ${rectangle.width / 10} ${rectangle.height / 2}, 0, 0, 0,${rectangle.x + rectangle.width} ${rectangle.y + rectangle.height} L${rectangle.x + rectangle.width / 10} ${rectangle.y + rectangle.height}A  ${rectangle.width / 10} ${rectangle.height / 2}, 0, 0, 1,${rectangle.x + rectangle.width / 10} ${rectangle.y}`, { ...options, fillStyle: 'solid' });
+         setStrokeLinecap(shape, 'round');
+         return shape;
+@@ -4974,7 +4974,7 @@ const StoredDataEngine = {
+ 
+ const PredefinedProcessEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const shape = rs.path(`M${rectangle.x} ${rectangle.y} H${rectangle.x + rectangle.width} V${rectangle.y + rectangle.height} H${rectangle.x} Z M${rectangle.x + rectangle.width * 0.06} ${rectangle.y} L${rectangle.x + rectangle.width * 0.06} ${rectangle.y + rectangle.height} M${rectangle.x + rectangle.width - rectangle.width * 0.06} ${rectangle.y} L${rectangle.x + rectangle.width - rectangle.width * 0.06} ${rectangle.y + rectangle.height}`, { ...options, fillStyle: 'solid' });
+         setStrokeLinecap(shape, 'round');
+         return shape;
+@@ -5043,7 +5043,7 @@ const OffPageEngine = createPolygonEngine({
+ 
+ const OrEngine = createEllipseEngine({
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const rx = rectangle.width / 2;
+         const ry = rectangle.height / 2;
+         const startPoint = [rectangle.x + rectangle.width, rectangle.y + rectangle.height / 2];
+@@ -5061,7 +5061,7 @@ const OrEngine = createEllipseEngine({
+ 
+ const SummingJunctionEngine = createEllipseEngine({
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const rx = rectangle.width / 2;
+         const ry = rectangle.height / 2;
+         const startPoint = [rectangle.x + rectangle.width, rectangle.y + rectangle.height / 2];
+@@ -5082,7 +5082,7 @@ const SummingJunctionEngine = createEllipseEngine({
+ 
+ const DocumentEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const shape = rs.path(`M${rectangle.x} ${rectangle.y + rectangle.height - rectangle.height / 9} V${rectangle.y} H${rectangle.x + rectangle.width} V${rectangle.y + rectangle.height - rectangle.height / 9}
+             Q${rectangle.x + rectangle.width - rectangle.width / 4} ${rectangle.y + rectangle.height - (rectangle.height / 9) * 3}, ${rectangle.x + rectangle.width / 2} ${rectangle.y + rectangle.height - rectangle.height / 9} T${rectangle.x} ${rectangle.y + rectangle.height - rectangle.height / 9}           
+             `, { ...options, fillStyle: 'solid' });
+@@ -5167,7 +5167,7 @@ const getMultiDocumentPoints = (rectangle) => {
+ };
+ const MultiDocumentEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const shape = rs.path(`M${rectangle.x} ${rectangle.y + rectangle.height - rectangle.height / 9} V${rectangle.y + 10} H${rectangle.x + 5} V${rectangle.y + 5} H${rectangle.x + 10} V${rectangle.y} H${rectangle.x + rectangle.width} V${rectangle.y + rectangle.height - rectangle.height / 9 - 10 - 3} L${rectangle.x + rectangle.width - 5} ${rectangle.y + rectangle.height - rectangle.height / 9 - 10 - 3 - 4} V${rectangle.y + rectangle.height - rectangle.height / 9 - 5 - 3}
+                  L${rectangle.x + rectangle.width - 10} ${rectangle.y + rectangle.height - rectangle.height / 9 - 5 - 3 - 4} V${rectangle.y + rectangle.height - rectangle.height / 9}
+                 
+@@ -5246,7 +5246,7 @@ const MultiDocumentEngine = {
+ 
+ const DatabaseEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const shape = rs.path(`M${rectangle.x} ${rectangle.y + rectangle.height * 0.15}  
+             A${rectangle.width / 2} ${rectangle.height * 0.15}, 0, 0, 0,${rectangle.x + rectangle.width} ${rectangle.y + rectangle.height * 0.15} 
+             A${rectangle.width / 2} ${rectangle.height * 0.15}, 0, 0, 0,${rectangle.x} ${rectangle.y + rectangle.height * 0.15} 
+@@ -5320,7 +5320,7 @@ const DatabaseEngine = {
+ 
+ const HardDiskEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const shape = rs.path(`M${rectangle.x + rectangle.width - rectangle.width * 0.15} ${rectangle.y}  
+             A${rectangle.width * 0.15} ${rectangle.height / 2}, 0, 0, 0,${rectangle.x + rectangle.width - rectangle.width * 0.15} ${rectangle.y + rectangle.height} 
+             A${rectangle.width * 0.15} ${rectangle.height / 2}, 0, 0, 0,${rectangle.x + rectangle.width - rectangle.width * 0.15} ${rectangle.y} 
+@@ -5398,7 +5398,7 @@ const HardDiskEngine = {
+ 
+ const InternalStorageEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const shape = rs.path(`M${rectangle.x} ${rectangle.y} h${rectangle.width} v${rectangle.height} h${-rectangle.width} v${-rectangle.height}
+             M${rectangle.x} ${rectangle.y + rectangle.height / 10} h${rectangle.width}
+             M${rectangle.x + rectangle.width / 10} ${rectangle.y} v${rectangle.height}
+@@ -5461,7 +5461,7 @@ function generateNoteCurlyLeftPath(rectangle) {
+ }
+ const NoteCurlyLeftEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const { startPoint, upperCurve, lowerCurve } = generateNoteCurlyLeftPath(rectangle);
+         const pathData = [
+             `M${startPoint[0]} ${startPoint[1]}`,
+@@ -5534,7 +5534,7 @@ function generateNoteCurlyRightPath(rectangle) {
+ }
+ const NoteCurlyRightEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const { startPoint, upperCurve, lowerCurve } = generateNoteCurlyRightPath(rectangle);
+         const pathData = [
+             `M${startPoint[0]} ${startPoint[1]}`,
+@@ -5595,7 +5595,7 @@ const NoteCurlyRightEngine = {
+ 
+ const NoteSquareEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const shape = rs.path(`M${rectangle.x + rectangle.width * 0.075} ${rectangle.y + rectangle.height} H${rectangle.x} V${rectangle.y} H${rectangle.x + rectangle.width * 0.075}
+            `, { ...options, fillStyle: 'solid', fill: 'transparent' });
+         setStrokeLinecap(shape, 'round');
+@@ -5635,7 +5635,7 @@ const getDisplayPoints = (rectangle) => {
+ };
+ const DisplayEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const shape = rs.path(`M${rectangle.x + rectangle.width * 0.15} ${rectangle.y} 
+             H${rectangle.x + rectangle.width - rectangle.width * 0.1} 
+             A ${rectangle.width * 0.1} ${rectangle.height / 2}, 0, 0, 1,${rectangle.x + rectangle.width - rectangle.width * 0.1} ${rectangle.y + rectangle.height}
+@@ -5691,7 +5691,7 @@ const TableEngine = {
+         try {
+             const pointCells = getCellsWithPoints(board, { ...options?.element });
+             if (pointCells) {
+-                const rs = PlaitBoard.getRoughSVG(board);
++                const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+                 const { x, y, width, height } = rectangle;
+                 const tableTopBorder = drawLine(rs, [x, y], [x + width, y], roughOptions);
+                 const tableLeftBorder = drawLine(rs, [x, y], [x, y + height], roughOptions);
+@@ -5834,7 +5834,7 @@ function generateActorPath(rectangle) {
+ }
+ const ActorEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const { headArcCommand, bodyLine, armsLine, leftLegLine, rightLegLine } = generateActorPath(rectangle);
+         const pathData = [
+             // 头部（从中间开始画）
+@@ -5920,7 +5920,7 @@ const ActorEngine = {
+ 
+ const ContainerEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const shape = rs.path(`M${rectangle.x} ${rectangle.y} H${rectangle.x + rectangle.width} V${rectangle.y + rectangle.height} H${rectangle.x} Z M${rectangle.x + 40} ${rectangle.y} L${rectangle.x + 40} ${rectangle.y + rectangle.height} `, { ...options, fillStyle: 'solid' });
+         setStrokeLinecap(shape, 'round');
+         return shape;
+@@ -5979,7 +5979,7 @@ function generatePackagePath(rectangle) {
+ }
+ const PackageEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const { points } = generatePackagePath(rectangle);
+         const pathData = [
+             `M${points.leftTop[0]} ${points.leftTop[1]}`,
+@@ -6062,7 +6062,7 @@ const PackageEngine = {
+ 
+ const CombinedFragmentEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const shape = rs.path(`M${rectangle.x} ${rectangle.y + 25} 
+             V${rectangle.y}
+             H${rectangle.x + rectangle.width} 
+@@ -6136,7 +6136,7 @@ function getDeletionLines(rectangle) {
+ }
+ const DeletionEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const lines = getDeletionLines(rectangle);
+         const shape = rs.path(lines.map(([from, to]) => `M${from[0]} ${from[1]} L${to[0]} ${to[1]}`).join(' '), {
+             ...options,
+@@ -6179,7 +6179,7 @@ const DeletionEngine = {
+ 
+ const ActiveClassEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const shape = rs.path(`M${rectangle.x} ${rectangle.y} H${rectangle.x + rectangle.width} V${rectangle.y + rectangle.height} H${rectangle.x} Z M${rectangle.x + rectangle.width * 0.125} ${rectangle.y} L${rectangle.x + rectangle.width * 0.125} ${rectangle.y + rectangle.height} M${rectangle.x + rectangle.width - rectangle.width * 0.125} ${rectangle.y} L${rectangle.x + rectangle.width - rectangle.width * 0.125} ${rectangle.y + rectangle.height}`, { ...options, fillStyle: 'solid' });
+         setStrokeLinecap(shape, 'round');
+         return shape;
+@@ -6219,7 +6219,7 @@ const ActiveClassEngine = {
+ 
+ const NoteEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const shape = rs.path(`M${rectangle.x} ${rectangle.y} 
+             h${rectangle.width - 16}
+             v16
+@@ -6311,7 +6311,7 @@ function generateAssemblyPath(rectangle) {
+ }
+ const AssemblyEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const { startPoint, line1, circleArcCommand, verticalArcCommand, line2 } = generateAssemblyPath(rectangle);
+         const pathData = [
+             `M${startPoint[0]} ${startPoint[1]}`,
+@@ -6399,7 +6399,7 @@ function generateRequiredInterfacePath(rectangle) {
+ }
+ const RequiredInterfaceEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const { startPoint, leftArcCommand, line } = generateRequiredInterfacePath(rectangle);
+         const pathData = [
+             `M${startPoint[0]} ${startPoint[1]}`,
+@@ -6492,7 +6492,7 @@ function generateProvidedInterfacePath(rectangle) {
+ }
+ const ProvidedInterfaceEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const { startPoint, line, arcCommands } = generateProvidedInterfacePath(rectangle);
+         const pathData = [
+             `M${startPoint[0]} ${startPoint[1]}`,
+@@ -6568,7 +6568,7 @@ function generateComponentPath(rectangle) {
+ }
+ const ComponentEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const { boxSize, points } = generateComponentPath(rectangle);
+         const pathData = [
+             // 主矩形轮廓
+@@ -6677,7 +6677,7 @@ const ComponentEngine = {
+ 
+ const ComponentBoxEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         const componentWidth = rectangle.width - 45 * 2 - 18 > 1 ? 45 : rectangle.width * 0.25;
+         const componentHeight = rectangle.height - 30 - 8 * 2 > 1 ? 30 : rectangle.height * 0.2;
+         const componentRectangle = {
+@@ -6733,7 +6733,7 @@ const ComponentBoxEngine = {
+ 
+ const TemplateEngine = {
+     draw(board, rectangle, options) {
+-        const rs = PlaitBoard.getRoughSVG(board);
++        const rs = PlaitBoard.getRoughSVG(board); if (!rs) return;
+         return drawRoundRectangle(rs, rectangle.x, rectangle.y, rectangle.x + rectangle.width, rectangle.y + rectangle.height, {
+             ...options,
+             fillStyle: 'solid',
+@@ -8299,7 +8299,7 @@ const withArrowLineAutoCompleteReaction = (board) => {
+     let temporaryShapeG = null;
+     board.pointerMove = (event) => {
+         reactionG?.remove();
+-        PlaitBoard.getBoardContainer(board).classList.remove(CursorClass.crosshair);
++        (PlaitBoard.getBoardContainer(board))?.classList?.remove(CursorClass.crosshair);
+         const selectedElements = getSelectedDrawElements(board);
+         temporaryArrowLineG?.remove();
+         temporaryShapeG?.remove();
+@@ -8320,7 +8320,7 @@ const withArrowLineAutoCompleteReaction = (board) => {
+                     fillStyle: 'solid'
+                 });
+                 PlaitBoard.getActiveHost(board).append(reactionG);
+-                PlaitBoard.getBoardContainer(board).classList.add(CursorClass.crosshair);
++                (PlaitBoard.getBoardContainer(board))?.classList?.add(CursorClass.crosshair);
+                 if (hasValidAngle(originElement)) {
+                     const rectangle = board.getRectangle(originElement);
+                     const activeRectangle = toActiveRectangleFromViewBoxRectangle(board, rectangle);
+@@ -8369,7 +8369,7 @@ const withArrowLineAutoCompleteReaction = (board) => {
+     const clearRef = () => {
+         if (reactionG) {
+             reactionG?.remove();
+-            PlaitBoard.getBoardContainer(board).classList.remove(CursorClass.crosshair);
++            (PlaitBoard.getBoardContainer(board))?.classList?.remove(CursorClass.crosshair);
+             temporaryArrowLineG?.remove();
+             temporaryShapeG?.remove();
+         }
+@@ -8495,7 +8495,7 @@ const withDrawRotate = (board) => {
+                     rotateRef.angle = normalizeAngle(angle - selectionAngle) || 0;
+                     rotateElements(board, rotateRef.elements, rotateRef.angle);
+                     MERGING.set(board, true);
+-                    PlaitBoard.getBoardContainer(board).classList.add('element-rotating');
++                    (PlaitBoard.getBoardContainer(board))?.classList?.add('element-rotating');
+                 }
+             });
+             return;
+@@ -8509,7 +8509,7 @@ const withDrawRotate = (board) => {
+             const selectedElements = getSelectedElements(board);
+             Transforms.addSelectionWithTemporaryElements(board, selectedElements);
+         }
+-        PlaitBoard.getBoardContainer(board).classList.remove('element-rotating');
++        (PlaitBoard.getBoardContainer(board))?.classList?.remove('element-rotating');
+         removeRotating(board);
+         rotateRef = null;
+         MERGING.set(board, false);
+@@ -9082,7 +9082,7 @@ const withVectorLineCreateByDraw = (board) => {
+         if (temporaryElement) {
+             Transforms.insertNode(board, temporaryElement, [board.children.length]);
+         }
+-        PlaitBoard.getBoardContainer(board).classList.remove(`vector-line-closed`);
++        (PlaitBoard.getBoardContainer(board))?.classList?.remove(`vector-line-closed`);
+         lineShapeG?.remove();
+         lineShapeG = null;
+         temporaryElement = null;
+@@ -9116,10 +9116,10 @@ const withVectorLineCreateByDraw = (board) => {
+                 const distance = distanceBetweenPointAndPoint(...movingPoint, ...drawPoints[0]);
+                 if (distance <= LINE_HIT_GEOMETRY_BUFFER) {
+                     movingPoint = drawPoints[0];
+-                    PlaitBoard.getBoardContainer(board).classList.add(`vector-line-closed`);
++                    (PlaitBoard.getBoardContainer(board))?.classList?.add(`vector-line-closed`);
+                 }
+                 else {
+-                    PlaitBoard.getBoardContainer(board).classList.remove(`vector-line-closed`);
++                    (PlaitBoard.getBoardContainer(board))?.classList?.remove(`vector-line-closed`);
+                 }
+                 temporaryElement = vectorLineCreating(board, VectorLineShape.straight, drawPoints, movingPoint, lineShapeG);
+             }

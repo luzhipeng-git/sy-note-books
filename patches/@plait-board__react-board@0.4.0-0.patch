@@ -1,0 +1,13 @@
+diff --git a/index.mjs b/index.mjs
+index 4a5dc976fb595758d651054e31bf413757b5bf94..698d48f38236706c351a0e27961c5105de6da3d6 100644
+--- a/index.mjs
++++ b/index.mjs
+@@ -279,7 +279,7 @@ const Qe = (e, r, m) => {
+         const g = S.isReadOnly(c);
+         o = { ...o, ...h }, s.render(/* @__PURE__ */ B(ee, { ...o })), g === !0 && o.readonly === !1 ? setTimeout(() => {
+           S.focus(c);
+-        }, 0) : g === !1 && o.readonly === !0 && (S.blur(c), S.deselect(c));
++        }, 0) : g === !1 && o.readonly === !0 && (function() { try { S.blur(c); } catch(e) {} try { S.deselect(c); } catch(e) {} })();
+       }
+     };
+   }, r;
