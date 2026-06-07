@@ -11,3 +11,4 @@ src-tauri/target/
 __pycache__/
 .vite/
 src-tauri/binaries/synote-export-*
+cicd/git-access-token
