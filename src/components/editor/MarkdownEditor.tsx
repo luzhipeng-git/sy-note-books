@@ -14,6 +14,7 @@ interface MarkdownEditorProps {
 }
 
 export function MarkdownEditor({ filePath, content }: MarkdownEditorProps) {
+  const rootPath = useWorkspaceStore((s) => s.rootPath);
   const containerRef = useRef<HTMLDivElement>(null);
   const vditorRef = useRef<Vditor | null>(null);
   const setContent = useEditorStore((s) => s.setContent);
@@ -256,7 +257,8 @@ export function MarkdownEditor({ filePath, content }: MarkdownEditorProps) {
       const chapterDir = pathParts.slice(0, -1).join('/');
       const drawnixPath = `${chapterDir}/assets/${parsed.docName}-img-${String(parsed.index).padStart(3, '0')}.drawnix`;
 
-      const data = await loadDrawnix(drawnixPath);
+      const wsRoot = rootPath || '/mock/workspace';
+      const data = await loadDrawnix(`${wsRoot}/${drawnixPath}`);
       if (!data) return;
 
       const vditor = vditorRef.current;

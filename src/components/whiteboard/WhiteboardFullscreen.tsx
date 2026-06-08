@@ -126,9 +126,10 @@ export function WhiteboardFullscreen() {
       const docName = docFile.replace(/\.md$/, '');
       const chapterDir = pathParts.slice(0, -1).join('/');
       const assetsDir = chapterDir ? `${chapterDir}/assets` : 'assets';
+      const absAssetsDir = `${wsRoot}/${assetsDir}`;
 
-      const index = await getNextImageIndex(assetsDir, docName);
-      const basePath = buildImagePath(assetsDir, docName, index, '');
+      const index = await getNextImageIndex(absAssetsDir, docName);
+      const basePath = buildImagePath(absAssetsDir, docName, index, '');
       const basePathNoExt = basePath.replace(/\.$/, '');
 
       const jsonData = serializeDrawnixData(elements);

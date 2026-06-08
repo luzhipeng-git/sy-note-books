@@ -13,19 +13,20 @@ export function useAutoSave() {
   const setModified = useEditorStore((s) => s.setModified);
   const setSaveStatus = useEditorStore((s) => s.setSaveStatus);
   const activeFilePath = useWorkspaceStore((s) => s.activeFilePath);
+  const rootPath = useWorkspaceStore((s) => s.rootPath);
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryCountRef = useRef(0);
 
   useEffect(() => {
-    if (!isModified || !activeFilePath || !fileContent) return;
+    if (!isModified || !activeFilePath || !fileContent || !rootPath) return;
 
     if (timerRef.current) clearTimeout(timerRef.current);
 
     const doSave = async (attempt: number): Promise<void> => {
       setSaveStatus('saving');
       try {
-        await invokeIPC('save_file', { path: activeFilePath, content: fileContent });
+        await invokeIPC('save_file', { path: `${rootPath}/${activeFilePath}`, content: fileContent });
         setModified(false);
         setSaveStatus('saved');
         retryCountRef.current = 0;
