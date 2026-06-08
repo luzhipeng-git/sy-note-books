@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { pickDirectory } from '../../services/dialogService';
 
 interface CreateWorkspaceDialogProps {
   onSubmit: (path: string, title: string, author: string) => void;
@@ -16,6 +17,13 @@ export function CreateWorkspaceDialog({ onSubmit, onCancel }: CreateWorkspaceDia
     onSubmit(path.trim(), title.trim(), author.trim() || '未知');
   };
 
+  const handlePickDirectory = async () => {
+    const selected = await pickDirectory();
+    if (selected) {
+      setPath(selected);
+    }
+  };
+
   return (
     <div
       style={{
@@ -30,13 +38,13 @@ export function CreateWorkspaceDialog({ onSubmit, onCancel }: CreateWorkspaceDia
       onClick={onCancel}
     >
       <div
-        className="modal-card"
         style={{
           width: 420,
           padding: 'var(--sp-6)',
-          background: 'var(--bg-primary)',
+          background: 'var(--surface-1)',
           borderRadius: 'var(--radius-lg)',
           boxShadow: '0 25px 50px -12px rgba(0,0,0,.25)',
+          border: '1px solid var(--main-border)',
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -112,6 +120,14 @@ export function CreateWorkspaceDialog({ onSubmit, onCancel }: CreateWorkspaceDia
                 placeholder="/home/user/my-docs"
                 style={{ flex: 1 }}
               />
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handlePickDirectory}
+                style={{ flexShrink: 0 }}
+              >
+                📂 选择
+              </button>
             </div>
           </div>
 

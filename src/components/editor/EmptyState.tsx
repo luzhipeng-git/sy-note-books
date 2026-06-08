@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { CreateWorkspaceDialog } from '../dialogs/CreateWorkspaceDialog';
+import { pickDirectory } from '../../services/dialogService';
 
 export function EmptyState() {
   const { openWorkspace, createWorkspace } = useWorkspaceStore();
@@ -23,10 +24,9 @@ export function EmptyState() {
         <button className="btn btn-primary" onClick={() => setShowCreateDialog(true)}>
           新建 Workspace
         </button>
-        <button className="btn btn-secondary" onClick={() => {
-          // In dev mode, use mock path. In Tauri, this would open a file dialog.
-          const path = prompt('输入 Workspace 路径:');
-          if (path) openWorkspace(path);
+        <button className="btn btn-secondary" onClick={async () => {
+          const selected = await pickDirectory();
+          if (selected) openWorkspace(selected);
         }}>
           打开文件夹
         </button>
