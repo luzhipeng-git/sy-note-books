@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import Vditor from 'vditor';
 import 'vditor/dist/index.css';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { useEditorStore } from '../../stores/editorStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useWhiteboardStore } from '../../stores/whiteboardStore';
@@ -183,6 +184,32 @@ export function MarkdownEditor({ filePath, content }: MarkdownEditorProps) {
 
     vditorRef.current = vditor;
 
+    // Rewrite relative image URLs to Tauri asset protocol URLs so the webview can load them.
+    // Vditor IR mode keeps markdown source separate from rendered HTML,
+    // so rewriting <img src> does NOT affect saved markdown content.
+    const isTauri = '__TAURI_INTERNALS__' in window;
+    const rewriteImageUrls = () => {
+      const wsRoot = useWorkspaceStore.getState().rootPath;
+      if (!wsRoot) return;
+      const docDir = filePath.replace(/\\/g, '/').split('/').slice(0, -1).join('/');
+      const imgs = containerRef.current?.querySelectorAll('.vditor-ir img[src]');
+      if (!imgs) return;
+      for (const img of imgs) {
+        const src = img.getAttribute('src') ?? '';
+        if (src.startsWith('http') || src.startsWith('data:') || src.startsWith('blob:') || src.startsWith('/')) continue;
+        if (img.hasAttribute('data-local-src')) continue;
+        const relativePath = src.replace(/^\.\//, '');
+        const absPath = `${wsRoot}/${docDir}/${relativePath}`;
+        img.setAttribute('data-local-src', src);
+        if (isTauri) {
+          img.setAttribute('src', convertFileSrc(absPath));
+        }
+      }
+    };
+    requestAnimationFrame(rewriteImageUrls);
+    const imgObserver = new MutationObserver(() => requestAnimationFrame(rewriteImageUrls));
+    imgObserver.observe(containerRef.current!, { childList: true, subtree: true });
+
     useEditorStore.getState().setInsertTable((rows: number, cols: number) => {
       const header = '| ' + Array.from({ length: cols }, (_, i) => `列${i + 1}`).join(' | ') + ' |';
       const separator = '| ' + Array.from({ length: cols }, () => '---').join(' | ') + ' |';
@@ -319,6 +346,7 @@ export function MarkdownEditor({ filePath, content }: MarkdownEditorProps) {
     return () => {
       hintObserver.disconnect();
       langObserver.disconnect();
+      imgObserver.disconnect();
       document.removeEventListener('selectionchange', handleSelectionChange);
       containerRef.current?.removeEventListener('keydown', handleKeyDown);
       containerRef.current?.removeEventListener('dblclick', handleDblClick);
