@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { Drawnix } from '@drawnix/drawnix';
+import { toSvg } from '@plait/core';
 import type { PlaitElement, PlaitBoard } from '@plait/core';
 import { useWhiteboardStore } from '../../stores/whiteboardStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
@@ -34,6 +35,7 @@ export function WhiteboardFullscreen() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const currentElements = useRef<PlaitElement[]>(initialElements);
+  const boardRef = useRef<PlaitBoard | null>(null);
   const canvasAreaRef = useRef<HTMLDivElement>(null);
   const [canvasReady, setCanvasReady] = useState(false);
   const [drawnixReady, setDrawnixReady] = useState(false);
@@ -58,7 +60,8 @@ export function WhiteboardFullscreen() {
     return () => observer.disconnect();
   }, []);
 
-  const handleAfterInit = useCallback(() => {
+  const handleAfterInit = useCallback((board: PlaitBoard) => {
+    boardRef.current = board;
     drawnixReadyRef.current = true;
     setDrawnixReady(true);
   }, []);
@@ -133,7 +136,9 @@ export function WhiteboardFullscreen() {
       const basePathNoExt = basePath.replace(/\.$/, '');
 
       const jsonData = serializeDrawnixData(elements);
-      const svgContent = '<svg xmlns="http://www.w3.org/2000/svg"></svg>';
+      const svgContent = boardRef.current
+        ? await toSvg(boardRef.current, { elements, padding: 20 })
+        : '<svg xmlns="http://www.w3.org/2000/svg"></svg>';
 
       await saveDrawnix(basePathNoExt, jsonData, svgContent);
 
