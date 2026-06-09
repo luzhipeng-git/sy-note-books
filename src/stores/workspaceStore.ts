@@ -10,6 +10,7 @@ import type { EditorType } from '../types/editor';
 import { invokeIPC } from '../services/ipc';
 import { useEditorStore } from './editorStore';
 import { useSearchStore } from './searchStore';
+import { useSettingsStore } from './settingsStore';
 
 interface WorkspaceState {
   rootPath: string | null;
@@ -105,6 +106,9 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
 
       // Build search index
       await useSearchStore.getState().buildIndex(info.rootPath, info.summary);
+
+      // Record in recent workspaces
+      useSettingsStore.getState().addRecentWorkspace(info.rootPath, info.workspaceMeta.title);
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       set({ errorMessage: msg || '打开 Workspace 失败' });
@@ -134,6 +138,9 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
 
       // Build search index (empty for new workspace)
       await useSearchStore.getState().buildIndex(info.rootPath, info.summary);
+
+      // Record in recent workspaces
+      useSettingsStore.getState().addRecentWorkspace(info.rootPath, info.workspaceMeta.title);
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       set({ errorMessage: msg || '创建 Workspace 失败' });
@@ -141,6 +148,9 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
   },
 
   openFile: async (path: string) => {
+    // Skip if the same file is already open
+    if (get().activeFilePath === path) return;
+
     try {
       const rootPath = get().rootPath;
       const fullPath = rootPath ? `${rootPath}/${path}` : path;

@@ -24,6 +24,24 @@ export function clearMockErrors() {
   mockErrors.clear();
 }
 
+// === Settings persistence (localStorage for dev mode) ===
+
+const SETTINGS_KEY = 'sy-note-books-dev-settings';
+
+function loadMockSettings(): Record<string, unknown> {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* ignore */ }
+  return {};
+}
+
+function saveMockSettings(settings: Record<string, unknown>): void {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch { /* ignore */ }
+}
+
 // === Stateful mock data ===
 
 function makeSlug(title: string): string {
@@ -152,15 +170,23 @@ const mockData: Record<string, (args?: Record<string, unknown>) => unknown> = {
     { path: '/home/user/docs/api-docs', title: 'API 文档', lastOpened: '2026-05-23' },
   ],
 
-  get_settings: () => ({
-    recentWorkspaces: [
-      { path: '/mock/workspace', title: '我的技术文档', lastOpened: '2026-05-24' },
-    ],
-    theme: 'light',
-    sidebarWidth: 260,
-  }),
+  get_settings: () => {
+    const persisted = loadMockSettings();
+    return {
+      recentWorkspaces: persisted.recentWorkspaces ?? [
+        { path: '/mock/workspace', title: '我的技术文档', lastOpened: '2026-05-24' },
+      ],
+      theme: persisted.theme ?? 'light',
+      sidebarWidth: persisted.sidebarWidth ?? 260,
+      sidebarCollapsed: persisted.sidebarCollapsed ?? false,
+    };
+  },
 
-  save_settings: () => undefined,
+  save_settings: (args) => {
+    const settings = (args?.settings ?? {}) as Record<string, unknown>;
+    saveMockSettings(settings);
+    return undefined;
+  },
 
   read_file: (args) => {
     const path = (args?.path as string) ?? '';
@@ -293,15 +319,12 @@ const mockData: Record<string, (args?: Record<string, unknown>) => unknown> = {
   ],
 
   export_chm: (args) => {
-    const workspacePath = (args?.workspacePath as string) ?? '/mock/workspace';
-    const wsName = workspacePath.split('/').pop() ?? 'workspace';
-    return `/dist/${wsName}/chm-v1`;
+    // Return the outputPath passed from frontend (absolute path), matching real Rust backend behavior
+    return (args?.outputPath as string) ?? '/mock/workspace/dist/chm-v1';
   },
 
   export_nginx: (args) => {
-    const workspacePath = (args?.workspacePath as string) ?? '/mock/workspace';
-    const wsName = workspacePath.split('/').pop() ?? 'workspace';
-    return `/dist/${wsName}/nginx-v1`;
+    return (args?.outputPath as string) ?? '/mock/workspace/dist/nginx-v1';
   },
 
   export_pdf: () => undefined,

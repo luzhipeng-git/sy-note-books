@@ -1,4 +1,5 @@
-import { open } from '@tauri-apps/plugin-dialog';
+import { open as openDialog } from '@tauri-apps/plugin-dialog';
+import { open as openPath } from '@tauri-apps/plugin-shell';
 
 const isTauri = '__TAURI_INTERNALS__' in window;
 
@@ -9,10 +10,23 @@ const isTauri = '__TAURI_INTERNALS__' in window;
  */
 export async function pickDirectory(): Promise<string | null> {
   if (isTauri) {
-    const selected = await open({ directory: true, multiple: false });
+    const selected = await openDialog({ directory: true, multiple: false });
     return selected as string | null;
   }
   // Browser fallback: prompt for path
   const path = prompt('输入 Workspace 目录路径:');
   return path?.trim() || null;
+}
+
+/**
+ * Open a path in the system file manager.
+ * In Tauri, uses the shell plugin to open with the default app.
+ * In browser dev mode, logs to console.
+ */
+export async function openInFileManager(path: string): Promise<void> {
+  if (isTauri) {
+    await openPath(path);
+  } else {
+    console.log('[dev] openInFileManager:', path);
+  }
 }

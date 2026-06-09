@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useExportStore } from '../../stores/exportStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { openInFileManager } from '../../services/dialogService';
 import type { ExportType } from '../../types/export';
 
 const EXPORT_CARDS: { type: ExportType; icon: string; title: string; desc: string }[] = [
@@ -36,6 +37,7 @@ export function ExportDialog() {
 
   const rootPath = useWorkspaceStore((s) => s.rootPath);
   const fileTree = useWorkspaceStore((s) => s.fileTree);
+  const workspaceMeta = useWorkspaceStore((s) => s.workspaceMeta);
   const recentWorkspaces = useSettingsStore((s) => s.recentWorkspaces);
 
   const selectedWorkspacePath = useExportStore((s) => s.selectedWorkspacePath);
@@ -66,7 +68,7 @@ export function ExportDialog() {
 
   // Determine whether this is a "no workspace open" flow
   const workspaceName = rootPath
-    ? (useWorkspaceStore.getState().workspaceMeta?.title ?? rootPath.split('/').pop())
+    ? (workspaceMeta?.title ?? rootPath.split('/').pop())
     : null;
 
   return createPortal(
@@ -221,11 +223,21 @@ export function ExportDialog() {
           <div className="export-result">
             <div className="export-result-icon">✅</div>
             <div className="export-result-title">导出成功</div>
-            <div className="export-result-path">{outputPath}</div>
+            <div className="export-result-path">{outputPath ?? '未知路径'}</div>
             <div className="export-actions export-actions-center">
-              <button className="btn btn-primary" onClick={closeDialog}>另存为...</button>
+              <button className="btn btn-primary" onClick={() => {
+                if (outputPath) {
+                  // Open the exact output directory (e.g., workspace/dist/chm-v1)
+                  // Real "save as" (copy to user-selected dir) requires Rust backend — TODO
+                  openInFileManager(outputPath);
+                }
+              }}>另存为...</button>
               <button className="btn btn-secondary" onClick={() => {
-                console.log('[ExportDialog] Open folder:', outputPath);
+                if (outputPath) {
+                  // Open parent directory (e.g., workspace/dist/) since output dir may not exist yet
+                  const parentDir = outputPath.replace(/[/\\][^/\\]+$/, '');
+                  openInFileManager(parentDir || outputPath);
+                }
               }}>
                 打开文件夹
               </button>

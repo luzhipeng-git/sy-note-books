@@ -24,6 +24,7 @@ export function WhiteboardFullscreen() {
     elements: initialElements,
     isDirty,
     isSaving,
+    editingImagePath,
     setDirty,
     setSaving,
     reset: resetStore,
@@ -114,10 +115,7 @@ export function WhiteboardFullscreen() {
   );
 
   const handleSaveAndInsert = useCallback(async () => {
-    if (!anchor) {
-      console.warn('[Whiteboard] No anchor, cannot save');
-      return;
-    }
+    if (!anchor || isSaving) return;
 
     const wsRoot = rootPath || '/mock/workspace';
     setSaving(true);
@@ -131,39 +129,62 @@ export function WhiteboardFullscreen() {
       const assetsDir = chapterDir ? `${chapterDir}/assets` : 'assets';
       const absAssetsDir = `${wsRoot}/${assetsDir}`;
 
-      const index = await getNextImageIndex(absAssetsDir, docName);
-      const basePath = buildImagePath(absAssetsDir, docName, index, '');
-      const basePathNoExt = basePath.replace(/\.$/, '');
+      // In edit mode, save back to the existing file; in new mode, get next index
+      const isEdit = mode === 'edit';
+      let drawnixBasePath: string;
+      let mdRef: string;
+
+      if (isEdit && editingImagePath) {
+        // Edit mode: overwrite existing file (editingImagePath is relative, e.g. "chapter/assets/doc-img-001.drawnix")
+        drawnixBasePath = `${wsRoot}/${editingImagePath}`;
+        const match = editingImagePath.match(/([^/]+)-img-(\d+)\.drawnix$/);
+        const existingDocName = match?.[1] ?? docName;
+        const existingIndex = match?.[2] ? parseInt(match[2], 10) : 1;
+        mdRef = buildMarkdownRef(existingDocName, existingIndex);
+      } else {
+        // New mode: get next index and create new file
+        const index = await getNextImageIndex(absAssetsDir, docName);
+        drawnixBasePath = buildImagePath(absAssetsDir, docName, index, 'drawnix');
+        mdRef = buildMarkdownRef(docName, index);
+      }
 
       const jsonData = serializeDrawnixData(elements);
       const svgContent = boardRef.current
         ? await toSvg(boardRef.current, { elements, padding: 20 })
         : '<svg xmlns="http://www.w3.org/2000/svg"></svg>';
 
-      await saveDrawnix(basePathNoExt, jsonData, svgContent);
+      await saveDrawnix(drawnixBasePath, jsonData, svgContent);
 
-      const mdRef = buildMarkdownRef(docName, index);
-      const currentContent = editorStore.getState().fileContent ?? '';
-      const lines = currentContent.split('\n');
+      // In edit mode, the markdown ref already exists — just update file content
+      let newContent = editorStore.getState().fileContent ?? '';
+      if (!isEdit) {
+        const currentContent = newContent;
+        const lines = currentContent.split('\n');
 
-      // cursorPosition is 1-based, from fileContent-based getCursorLine
-      const cursorIdx = Math.min(anchor.cursorPosition, lines.length) - 1;
-      const targetLine = lines[cursorIdx] ?? '';
+        // cursorPosition is 1-based, from fileContent-based getCursorLine
+        const cursorIdx = Math.min(anchor.cursorPosition, lines.length) - 1;
+        const targetLine = lines[cursorIdx] ?? '';
 
-      // Find last content line
-      let lastContentIdx = lines.length - 1;
-      while (lastContentIdx >= 0 && lines[lastContentIdx].trim() === '') lastContentIdx--;
+        // Find last content line
+        let lastContentIdx = lines.length - 1;
+        while (lastContentIdx >= 0 && lines[lastContentIdx].trim() === '') lastContentIdx--;
 
-      let insertIdx: number;
-      if (targetLine.trim() !== '') {
-        // Text line: if last content line → append at end; otherwise → insert after
-        insertIdx = cursorIdx >= lastContentIdx ? lines.length : cursorIdx + 1;
-      } else {
-        // Empty line: insert at this position
-        insertIdx = cursorIdx;
+        let insertIdx: number;
+        if (targetLine.trim() !== '') {
+          // Text line: if last content line → append at end; otherwise → insert after
+          insertIdx = cursorIdx >= lastContentIdx ? lines.length : cursorIdx + 1;
+        } else {
+          // Empty line: insert at this position
+          insertIdx = cursorIdx;
+        }
+        // Immutable insert — no splice mutation
+        const newLines = [
+          ...lines.slice(0, insertIdx),
+          '', mdRef, '',
+          ...lines.slice(insertIdx),
+        ];
+        newContent = newLines.join('\n');
       }
-      lines.splice(insertIdx, 0, '', mdRef, '');
-      const newContent = lines.join('\n');
 
       await invokeIPC('save_file', { path: `${wsRoot}/${docPath}`, content: newContent });
       editorStore.getState().setContent(newContent);
@@ -180,7 +201,7 @@ export function WhiteboardFullscreen() {
     } finally {
       setSaving(false);
     }
-  }, [anchor, rootPath, setSaving, resetStore, exitWhiteboard, editorStore]);
+  }, [anchor, rootPath, isSaving, mode, editingImagePath, setSaving, resetStore, exitWhiteboard, editorStore]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

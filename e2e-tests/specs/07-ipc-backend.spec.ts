@@ -813,6 +813,11 @@ describe('Command 13: get_settings', () => {
   });
 
   it('默认 theme 为 "light"', async () => {
+    // Reset to defaults first to ensure clean state
+    // (previous tests may have persisted non-default values)
+    const defaults = { theme: 'light', sidebarWidth: 260, recentWorkspaces: [] };
+    await invokeIPC<void>('save_settings', { settings: defaults });
+
     const settings = await ipcGetSettings();
     expect(settings.theme).toBe('light');
   });

@@ -66,8 +66,6 @@ src-tauri/              ← Rust 后端（Cargo workspace）
 ├── Cargo.toml          ← workspace 根（依赖 Tauri）
 └── core/Cargo.toml     ← core crate（仅依赖 serde，本机可编译）
 
-export-engine/          ← Python 导出引擎（PyInstaller 编译）
-
 design/                 ← 全局设计产出物（开发前一次性完成）
 ├── design-system.md    ← 静态设计系统（配色/字体/间距/组件风格）
 ├── interaction/        ← 交互设计（Mermaid 图表渲染为 HTML）
@@ -112,7 +110,7 @@ scripts/                ← 构建和测试脚本
 A. 全局设计（一次性）   →  UI 设计 + 交互设计 + 接口契约
 B. 分功能开发（逐 Phase）→  Phase 0→1→2→3→4→5 各自：代码开发 + 单元测试
 C. 集成测试（统一）     →  全链路联通验证
-D. 编译打包（最后）     →  跨平台构建 + Python 引擎打包
+D. 编译打包（最后）     →  跨平台构建
 ```
 
 ### A. 全局设计阶段使用的工具

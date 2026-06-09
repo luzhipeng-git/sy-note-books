@@ -43,7 +43,7 @@ interface ExportState {
 
 const PROGRESS_STEPS = [
   { progress: 10, text: '清理临时文件...', detail: '清理 temp/' },
-  { progress: 30, text: '启动导出引擎...', detail: 'Python 子进程已启动' },
+  { progress: 30, text: '启动导出引擎...', detail: '初始化导出流程' },
   { progress: 60, text: '生成输出文件...', detail: '处理 Markdown → HTML' },
   { progress: 85, text: '写入磁盘...', detail: '写入 dist/' },
   { progress: 100, text: '完成！', detail: '清理 temp/ 目录' },
@@ -89,7 +89,7 @@ export const useExportStore = create<ExportState>()((set, get) => ({
   setAuthorOverride: (author) => set({ authorOverride: author }),
 
   startExport: async (workspacePath) => {
-    const { exportType, scope, selectedChapter } = get();
+    const { exportType, scope, selectedChapter, titleOverride, authorOverride } = get();
     if (!workspacePath) return;
 
     // PDF: trigger browser print directly
@@ -102,25 +102,39 @@ export const useExportStore = create<ExportState>()((set, get) => ({
 
     set({ step: 'progress', progress: 0, progressText: '准备中...', progressDetail: '' });
 
-    // Simulate progress animation
-    const stepDelays = [400, 800, 1200, 600, 300];
-    for (let i = 0; i < PROGRESS_STEPS.length; i++) {
-      await new Promise<void>((resolve) => setTimeout(resolve, stepDelays[i]));
-      const s = PROGRESS_STEPS[i];
-      set({ progress: s.progress, progressText: s.text, progressDetail: s.detail });
-    }
-
     try {
       const chapter = scope === 'chapter' ? selectedChapter : undefined;
-      const wsName = workspacePath.split('/').pop() ?? 'workspace';
-      const outputPath = `/dist/${wsName}/${exportType}-v1`;
+      const outputPath = `${workspacePath}/dist/${exportType}-v1`;
 
       const command = exportType === 'chm' ? 'export_chm' : 'export_nginx';
-      const result = await invokeIPC<string>(command, {
+
+      // Start IPC call and progress animation in parallel
+      let ipcDone = false;
+      const ipcPromise = invokeIPC<string>(command, {
         workspacePath,
         outputPath,
         chapter,
+        title: titleOverride || undefined,
+        author: authorOverride || undefined,
+      }).then((result) => {
+        ipcDone = true;
+        return result;
       });
+
+      // Progress animation runs while IPC executes
+      // Stops early if IPC completes before animation finishes
+      const stepDelays = [400, 800, 1200, 600, 300];
+      for (let i = 0; i < PROGRESS_STEPS.length - 1; i++) {
+        if (ipcDone) break;
+        await new Promise<void>((resolve) => setTimeout(resolve, stepDelays[i]));
+        if (ipcDone) break;
+        const s = PROGRESS_STEPS[i];
+        set({ progress: s.progress, progressText: s.text, progressDetail: s.detail });
+      }
+
+      // Wait for IPC to complete (may already be done)
+      const result = await ipcPromise;
+      set({ progress: 100, progressText: '完成！', progressDetail: '清理 temp/ 目录' });
       set({ step: 'success', outputPath: result });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);

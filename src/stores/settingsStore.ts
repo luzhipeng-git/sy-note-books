@@ -18,6 +18,22 @@ interface SettingsState extends Settings {
   removeRecentWorkspace: (path: string) => void;
 }
 
+/** Persist current settings to disk via IPC. */
+async function persistSettings(state: Settings): Promise<void> {
+  try {
+    await invokeIPC('save_settings', {
+      settings: {
+        recentWorkspaces: state.recentWorkspaces,
+        theme: state.theme,
+        sidebarWidth: state.sidebarWidth,
+        sidebarCollapsed: state.sidebarCollapsed,
+      },
+    });
+  } catch (e) {
+    console.error('保存设置失败:', e);
+  }
+}
+
 export const useSettingsStore = create<SettingsState>()((set, get) => ({
   recentWorkspaces: [],
   theme: 'light',
@@ -34,16 +50,20 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     });
   },
 
-  toggleTheme: () =>
-    set((state) => ({
-      theme: state.theme === 'light' ? 'dark' : 'light',
-    })),
+  toggleTheme: () => {
+    set((state) => ({ theme: state.theme === 'light' ? 'dark' : 'light' }));
+    persistSettings(get());
+  },
 
-  setSidebarWidth: (width) =>
-    set({ sidebarWidth: Math.max(200, Math.min(400, width)) }),
+  setSidebarWidth: (width) => {
+    set({ sidebarWidth: Math.max(200, Math.min(400, width)) });
+    persistSettings(get());
+  },
 
-  toggleSidebarCollapse: () =>
-    set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+  toggleSidebarCollapse: () => {
+    set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed }));
+    persistSettings(get());
+  },
 
   addRecentWorkspace: (path, title) => {
     const { recentWorkspaces } = get();
@@ -53,10 +73,13 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       ...filtered,
     ].slice(0, 10);
     set({ recentWorkspaces: updated });
+    persistSettings({ ...get(), recentWorkspaces: updated });
   },
 
   removeRecentWorkspace: (path) => {
     const { recentWorkspaces } = get();
-    set({ recentWorkspaces: recentWorkspaces.filter((w) => w.path !== path) });
+    const updated = recentWorkspaces.filter((w) => w.path !== path);
+    set({ recentWorkspaces: updated });
+    persistSettings({ ...get(), recentWorkspaces: updated });
   },
 }));

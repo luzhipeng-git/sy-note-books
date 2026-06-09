@@ -1,7 +1,7 @@
 use std::path::Path;
 
 /// Export workspace as CHM electronic book.
-/// Currently a stub — Python export engine not yet integrated.
+/// Currently a stub — actual export logic not yet implemented.
 pub fn export_chm(
     workspace_path: &Path,
     output_path: &str,
@@ -15,7 +15,7 @@ pub fn export_chm(
 }
 
 /// Export workspace as nginx-deployable static site.
-/// Currently a stub — Python export engine not yet integrated.
+/// Currently a stub — actual export logic not yet implemented.
 pub fn export_nginx(
     workspace_path: &Path,
     output_path: &str,

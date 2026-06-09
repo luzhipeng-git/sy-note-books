@@ -123,10 +123,22 @@ export function exportPdfViaPrint(): void {
   );
 
   Promise.all(imagePromises).then(() => {
-    iframe.contentWindow?.print();
-    // Cleanup after a short delay to allow print dialog to open
-    setTimeout(() => {
-      document.body.removeChild(iframe);
-    }, 1000);
+    const win = iframe.contentWindow;
+    if (win) {
+      // Clean up iframe only after print dialog fully closes.
+      // Listen on the main window (not iframe) — some browsers only fire
+      // afterprint on the window that called print().
+      let removed = false;
+      const cleanup = () => {
+        if (!removed) {
+          removed = true;
+          iframe.remove();
+        }
+      };
+      window.addEventListener('afterprint', cleanup, { once: true });
+      win.print();
+      // Safety fallback in case afterprint never fires (e.g. old browsers)
+      setTimeout(cleanup, 30000);
+    }
   });
 }
