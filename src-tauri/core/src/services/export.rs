@@ -1,30 +1,126 @@
+use std::fs;
 use std::path::Path;
 
-/// Export workspace as CHM electronic book.
-/// Currently a stub — actual export logic not yet implemented.
-pub fn export_chm(
-    workspace_path: &Path,
-    output_path: &str,
-    _chapter: Option<&str>,
-) -> Result<String, String> {
-    if !workspace_path.exists() {
-        return Err(format!("Workspace 路径不存在：{}", workspace_path.display()));
-    }
-    // Stub: return mock output path
-    Ok(output_path.to_string())
-}
+use pulldown_cmark::{html, Options, Parser};
+
+use crate::models::workspace::SummaryEntry;
+use crate::services::workspace::{parse_summary, parse_workspace_json};
+
+// ═══════════════════════════════════════════════════════════════
+// Public API
+// ═══════════════════════════════════════════════════════════════
 
 /// Export workspace as nginx-deployable static site.
-/// Currently a stub — actual export logic not yet implemented.
+/// Reads all markdown files, converts to HTML with sidebar navigation,
+/// copies assets, and generates a complete static site.
 pub fn export_nginx(
     workspace_path: &Path,
     output_path: &str,
-    _chapter: Option<&str>,
+    chapter: Option<&str>,
+    title_override: Option<&str>,
+    author_override: Option<&str>,
 ) -> Result<String, String> {
-    if !workspace_path.exists() {
-        return Err(format!("Workspace 路径不存在：{}", workspace_path.display()));
+    let (meta, entries) = read_workspace(workspace_path, title_override, author_override)?;
+    let output_dir = Path::new(output_path);
+
+    let filtered = filter_entries(&entries, chapter);
+    if filtered.is_empty() {
+        return Err("没有可导出的内容".to_string());
     }
-    // Stub: return mock output path
+
+    fs::create_dir_all(output_dir).map_err(|e| format!("创建输出目录失败：{e}"))?;
+
+    // Collect all page paths for HTML generation
+    let pages = collect_pages(&filtered);
+
+    // Generate HTML for each page
+    for (title, md_rel_path) in &pages {
+        let md_abs = workspace_path.join(md_rel_path);
+        if !md_abs.exists() {
+            continue;
+        }
+        let md_content = fs::read_to_string(&md_abs)
+            .map_err(|e| format!("读取 {} 失败：{e}", md_rel_path))?;
+        let html_content = md_to_html(&md_content);
+        let html_rel = md_to_html_path(md_rel_path);
+        let html_abs = output_dir.join(&html_rel);
+
+        let root_prefix = compute_root_prefix(&html_rel);
+        let nav_html = generate_nav_html(&filtered, &root_prefix, md_rel_path);
+
+        let page_html = nginx_page_html(title, &html_content, &nav_html, &meta.title);
+        write_file_with_dirs(&html_abs, &page_html)?;
+    }
+
+    // Generate index.html
+    let index_html = nginx_index_html(&meta, &filtered);
+    fs::write(output_dir.join("index.html"), index_html)
+        .map_err(|e| format!("写入 index.html 失败：{e}"))?;
+
+    // Copy assets
+    copy_all_assets(workspace_path, output_dir, &pages)?;
+
+    Ok(output_path.to_string())
+}
+
+/// Export workspace as CHM electronic book project.
+/// Generates HTML files + .hhp/.hhc project files for CHM compilation.
+pub fn export_chm(
+    workspace_path: &Path,
+    output_path: &str,
+    chapter: Option<&str>,
+    title_override: Option<&str>,
+    author_override: Option<&str>,
+) -> Result<String, String> {
+    let (meta, entries) = read_workspace(workspace_path, title_override, author_override)?;
+    let output_dir = Path::new(output_path);
+
+    let filtered = filter_entries(&entries, chapter);
+    if filtered.is_empty() {
+        return Err("没有可导出的内容".to_string());
+    }
+
+    fs::create_dir_all(output_dir).map_err(|e| format!("创建输出目录失败：{e}"))?;
+
+    let pages = collect_pages(&filtered);
+    let mut file_list: Vec<String> = Vec::new();
+
+    // Generate HTML for each page (no sidebar — CHM has its own navigation)
+    for (title, md_rel_path) in &pages {
+        let md_abs = workspace_path.join(md_rel_path);
+        if !md_abs.exists() {
+            continue;
+        }
+        let md_content = fs::read_to_string(&md_abs)
+            .map_err(|e| format!("读取 {} 失败：{e}", md_rel_path))?;
+        let html_content = md_to_html(&md_content);
+        let html_rel = md_to_html_path(md_rel_path);
+        let html_abs = output_dir.join(&html_rel);
+
+        let page_html = chm_page_html(title, &html_content);
+        write_file_with_dirs(&html_abs, &page_html)?;
+        file_list.push(html_rel.replace('\\', "/"));
+    }
+
+    // Determine default topic (first page)
+    let default_topic = pages
+        .first()
+        .map(|(_, p)| md_to_html_path(p))
+        .unwrap_or_else(|| "index.html".to_string());
+
+    // Generate .hhp project file
+    let hhp = generate_hhp(&meta.title, &default_topic, &file_list);
+    fs::write(output_dir.join("project.hhp"), hhp)
+        .map_err(|e| format!("写入 project.hhp 失败：{e}"))?;
+
+    // Generate .hhc table of contents
+    let hhc = generate_hhc(&filtered);
+    fs::write(output_dir.join("contents.hhc"), hhc)
+        .map_err(|e| format!("写入 contents.hhc 失败：{e}"))?;
+
+    // Copy assets
+    copy_all_assets(workspace_path, output_dir, &pages)?;
+
     Ok(output_path.to_string())
 }
 
@@ -38,44 +134,684 @@ pub fn export_pdf(file_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+// ═══════════════════════════════════════════════════════════════
+// Markdown → HTML
+// ═══════════════════════════════════════════════════════════════
+
+fn md_to_html(md: &str) -> String {
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_FOOTNOTES);
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TASKLISTS);
+
+    let parser = Parser::new_ext(md, options);
+    let mut html_output = String::with_capacity(md.len() * 2);
+    html::push_html(&mut html_output, parser);
+    html_output
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Workspace reading helpers
+// ═══════════════════════════════════════════════════════════════
+
+struct WorkspaceExportMeta {
+    title: String,
+    author: String,
+}
+
+fn read_workspace(
+    workspace_path: &Path,
+    title_override: Option<&str>,
+    author_override: Option<&str>,
+) -> Result<(WorkspaceExportMeta, Vec<SummaryEntry>), String> {
+    if !workspace_path.exists() {
+        return Err(format!("Workspace 路径不存在：{}", workspace_path.display()));
+    }
+
+    // Read workspace.json
+    let json_path = workspace_path.join("workspace.json");
+    let json_content = fs::read_to_string(&json_path)
+        .map_err(|e| format!("读取 workspace.json 失败：{e}"))?;
+    let ws_meta = parse_workspace_json(&json_content)
+        .map_err(|e| format!("解析 workspace.json 失败：{e}"))?;
+
+    let title = title_override
+        .map(|t| t.to_string())
+        .unwrap_or(ws_meta.title);
+    let author = author_override
+        .map(|a| a.to_string())
+        .unwrap_or(ws_meta.author);
+
+    // Read SUMMARY.md
+    let summary_path = workspace_path.join("SUMMARY.md");
+    let summary_content = fs::read_to_string(&summary_path)
+        .map_err(|e| format!("读取 SUMMARY.md 失败：{e}"))?;
+    let entries = parse_summary(&summary_content);
+
+    Ok((
+        WorkspaceExportMeta { title, author },
+        entries,
+    ))
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Entry filtering and page collection
+// ═══════════════════════════════════════════════════════════════
+
+fn filter_entries<'a>(entries: &'a [SummaryEntry], chapter: Option<&str>) -> Vec<&'a SummaryEntry> {
+    match chapter {
+        None => entries.iter().collect(),
+        Some(ch) => {
+            // Match chapter by: path starts with chapter dir, or chapter dir is parent of entry path
+            entries
+                .iter()
+                .filter(|e| {
+                    let entry_dir = Path::new(&e.path)
+                        .parent()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    entry_dir == ch || e.path.starts_with(&format!("{}/", ch))
+                })
+                .collect()
+        }
+    }
+}
+
+/// Flatten SummaryEntry tree into (title, md_relative_path) pairs.
+fn collect_pages(entries: &[&SummaryEntry]) -> Vec<(String, String)> {
+    let mut pages = Vec::new();
+    for entry in entries {
+        collect_pages_recursive(entry, &mut pages);
+    }
+    pages
+}
+
+fn collect_pages_recursive(entry: &SummaryEntry, pages: &mut Vec<(String, String)>) {
+    if !entry.path.is_empty() && !entry.is_missing {
+        pages.push((entry.title.clone(), entry.path.clone()));
+    }
+    for child in &entry.children {
+        collect_pages_recursive(child, pages);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Path helpers
+// ═══════════════════════════════════════════════════════════════
+
+fn md_to_html_path(md_path: &str) -> String {
+    if md_path.ends_with(".md") {
+        format!("{}.html", &md_path[..md_path.len() - 3])
+    } else {
+        format!("{}.html", md_path)
+    }
+}
+
+/// Compute prefix like `../` to get from a page back to site root.
+fn compute_root_prefix(html_rel_path: &str) -> String {
+    let depth = Path::new(html_rel_path)
+        .parent()
+        .map(|p| p.components().count())
+        .unwrap_or(0);
+    if depth == 0 {
+        "./".to_string()
+    } else {
+        (0..depth).map(|_| "../").collect()
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Nginx static site generation
+// ═══════════════════════════════════════════════════════════════
+
+fn nginx_page_html(title: &str, content: &str, nav_html: &str, site_title: &str) -> String {
+    format!(
+        r##"<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{title} - {site_title}</title>
+<style>
+{css}
+</style>
+</head>
+<body>
+<nav class="sidebar">
+<div class="sidebar-header"><h1>{site_title}</h1></div>
+<div class="nav-list">{nav}</div>
+</nav>
+<main class="content"><article>{content}</article></main>
+</body>
+</html>"##,
+        css = NGINX_CSS,
+        title = html_escape(title),
+        content = content,
+        nav = nav_html,
+        site_title = html_escape(site_title),
+    )
+}
+
+fn generate_nav_html(
+    entries: &[&SummaryEntry],
+    root_prefix: &str,
+    current_md_path: &str,
+) -> String {
+    let mut html = String::new();
+    for entry in entries {
+        html.push_str("<div class=\"nav-group\">");
+
+        // Chapter entry
+        if !entry.path.is_empty() {
+            let html_path = md_to_html_path(&entry.path);
+            let current_html = md_to_html_path(current_md_path);
+            let active = if html_path == current_html {
+                " active"
+            } else {
+                ""
+            };
+            html.push_str(&format!(
+                "<a href=\"{prefix}{path}\" class=\"nav-link{active}\">{title}</a>",
+                prefix = root_prefix,
+                path = html_path,
+                active = active,
+                title = html_escape(&entry.title),
+            ));
+        } else {
+            html.push_str(&format!(
+                "<span class=\"nav-label\">{title}</span>",
+                title = html_escape(&entry.title)
+            ));
+        }
+
+        // Children
+        if !entry.children.is_empty() {
+            html.push_str("<div class=\"nav-children\">");
+            for child in &entry.children {
+                if child.path.is_empty() || child.is_missing {
+                    continue;
+                }
+                let html_path = md_to_html_path(&child.path);
+                let current_html = md_to_html_path(current_md_path);
+                let active = if html_path == current_html {
+                    " active"
+                } else {
+                    ""
+                };
+                html.push_str(&format!(
+                    "<a href=\"{prefix}{path}\" class=\"nav-link nav-child{active}\">{title}</a>",
+                    prefix = root_prefix,
+                    path = html_path,
+                    active = active,
+                    title = html_escape(&child.title),
+                ));
+            }
+            html.push_str("</div>");
+        }
+
+        html.push_str("</div>");
+    }
+    html
+}
+
+fn nginx_index_html(meta: &WorkspaceExportMeta, entries: &[&SummaryEntry]) -> String {
+    let mut chapter_list = String::new();
+    for entry in entries {
+        if entry.path.is_empty() {
+            continue;
+        }
+        let html_path = md_to_html_path(&entry.path);
+        chapter_list.push_str(&format!(
+            "<li><a href=\"{path}\">{title}</a></li>\n",
+            path = html_path,
+            title = html_escape(&entry.title),
+        ));
+    }
+
+    format!(
+        r##"<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{title}</title>
+<style>
+{css}
+</style>
+</head>
+<body class="index-page">
+<div class="index-container">
+<h1>{title}</h1>
+<p class="index-author">作者：{author}</p>
+<ul class="index-chapters">
+{chapters}
+</ul>
+</div>
+</body>
+</html>"##,
+        css = NGINX_CSS,
+        title = html_escape(&meta.title),
+        author = html_escape(&meta.author),
+        chapters = chapter_list,
+    )
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CHM project generation
+// ═══════════════════════════════════════════════════════════════
+
+fn chm_page_html(title: &str, content: &str) -> String {
+    format!(
+        r##"<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>{title}</title>
+<style>
+{css}
+</style>
+</head>
+<body>
+<article class="content">{content}</article>
+</body>
+</html>"##,
+        css = CHM_CSS,
+        title = html_escape(title),
+        content = content,
+    )
+}
+
+fn generate_hhp(title: &str, default_topic: &str, file_list: &[String]) -> String {
+    let mut files_section = String::new();
+    for f in file_list {
+        files_section.push_str(f);
+        files_section.push('\n');
+    }
+
+    format!(
+        "[OPTIONS]\n\
+         Compatibility=1.1 or later\n\
+         Compiled file=output.chm\n\
+         Contents file=contents.hhc\n\
+         Default topic={default_topic}\n\
+         Display compile progress=No\n\
+         Full-text search=Yes\n\
+         Language=0x0804\n\
+         Title={title}\n\n\
+         [FILES]\n\
+         {files}",
+        title = title,
+        default_topic = default_topic,
+        files = files_section,
+    )
+}
+
+fn generate_hhc(entries: &[&SummaryEntry]) -> String {
+    let mut items = String::new();
+    for entry in entries {
+        items.push_str(&generate_hhc_item(entry, 0));
+    }
+
+    format!(
+        "<!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML//EN\">\n\
+         <HTML><HEAD></head><BODY>\n\
+         <UL>\n\
+         {items}\
+         </UL>\n\
+         </BODY></HTML>",
+        items = items,
+    )
+}
+
+fn generate_hhc_item(entry: &SummaryEntry, _depth: usize) -> String {
+    let mut html = String::new();
+
+    if !entry.path.is_empty() {
+        let html_path = md_to_html_path(&entry.path);
+        html.push_str(&format!(
+            "<LI><OBJECT type=\"text/sitemap\">\n\
+             <param name=\"Name\" value=\"{title}\">\n\
+             <param name=\"Local\" value=\"{path}\">\n\
+             </OBJECT>\n",
+            title = html_escape(&entry.title),
+            path = html_path,
+        ));
+    }
+
+    if !entry.children.is_empty() {
+        html.push_str("<UL>\n");
+        for child in &entry.children {
+            html.push_str(&generate_hhc_item(child, _depth + 1));
+        }
+        html.push_str("</UL>\n");
+    }
+
+    html
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Asset copying
+// ═══════════════════════════════════════════════════════════════
+
+fn copy_all_assets(
+    workspace_path: &Path,
+    output_dir: &Path,
+    pages: &[(String, String)],
+) -> Result<(), String> {
+    // Collect unique directories that may contain assets
+    let mut dirs_to_check: Vec<String> = vec!["assets".to_string()];
+    for (_, md_path) in pages {
+        if let Some(parent) = Path::new(md_path).parent() {
+            let asset_dir = parent.join("assets").to_string_lossy().to_string();
+            if !dirs_to_check.contains(&asset_dir) {
+                dirs_to_check.push(asset_dir);
+            }
+        }
+    }
+
+    for rel_dir in &dirs_to_check {
+        let src = workspace_path.join(rel_dir);
+        if src.is_dir() {
+            let dst = output_dir.join(rel_dir);
+            copy_dir_recursive(&src, &dst)?;
+        }
+    }
+    Ok(())
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
+    fs::create_dir_all(dst).map_err(|e| format!("创建目录失败：{e}"))?;
+
+    for entry in fs::read_dir(src).map_err(|e| format!("读取目录失败：{e}"))? {
+        let entry = entry.map_err(|e| format!("读取目录项失败：{e}"))?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path)
+                .map_err(|e| format!("复制文件失败：{e}"))?;
+        }
+    }
+    Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════════
+// File utilities
+// ═══════════════════════════════════════════════════════════════
+
+fn write_file_with_dirs(path: &Path, content: &str) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建目录失败：{e}"))?;
+    }
+    fs::write(path, content).map_err(|e| format!("写入文件失败：{e}"))?;
+    Ok(())
+}
+
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CSS templates
+// ═══════════════════════════════════════════════════════════════
+
+const NGINX_CSS: &str = r#"
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    line-height:1.7;color:#333;background:#fff}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:280px;background:#f8f9fa;
+    border-right:1px solid #e0e0e0;overflow-y:auto;padding:20px 0}
+.sidebar-header{padding:0 20px 16px;border-bottom:1px solid #e0e0e0;margin-bottom:12px}
+.sidebar-header h1{font-size:18px;color:#1a1a1a}
+.nav-group{margin-bottom:4px}
+.nav-link,.nav-label{display:block;padding:6px 20px;color:#555;text-decoration:none;font-size:14px;
+    transition:background .15s}
+.nav-link:hover{background:#e8e8e8;color:#1a1a1a}
+.nav-link.active{color:#0066cc;font-weight:600;background:#e0ecff}
+.nav-children .nav-child{padding-left:36px;font-size:13px}
+.content{margin-left:280px;padding:40px 48px;max-width:860px;min-height:100vh}
+.content h1{font-size:28px;margin:0 0 24px;color:#1a1a1a;border-bottom:2px solid #e0e0e0;padding-bottom:12px}
+.content h2{font-size:22px;margin:32px 0 16px;color:#1a1a1a}
+.content h3{font-size:18px;margin:24px 0 12px;color:#333}
+.content p{margin:0 0 16px}
+.content ul,.content ol{margin:0 0 16px 24px}
+.content li{margin-bottom:4px}
+.content code{background:#f0f0f0;padding:2px 6px;border-radius:3px;font-size:90%}
+.content pre{background:#f5f5f5;padding:16px;border-radius:6px;overflow-x:auto;margin:0 0 16px}
+.content pre code{background:none;padding:0;font-size:13px}
+.content blockquote{border-left:4px solid #ddd;padding:8px 16px;margin:0 0 16px;background:#f9f9f9;color:#666}
+.content table{border-collapse:collapse;width:100%;margin:0 0 16px}
+.content th,.content td{border:1px solid #ddd;padding:8px 12px;text-align:left}
+.content th{background:#f0f0f0;font-weight:600}
+.content img{max-width:100%;height:auto}
+.index-page{display:flex;justify-content:center;align-items:center;min-height:100vh;background:#f8f9fa}
+.index-container{background:#fff;padding:48px 64px;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,.08)}
+.index-container h1{font-size:32px;margin-bottom:12px;color:#1a1a1a}
+.index-author{color:#888;margin-bottom:24px}
+.index-chapters{list-style:none}
+.index-chapters li{margin-bottom:8px}
+.index-chapters a{color:#0066cc;text-decoration:none;font-size:16px}
+.index-chapters a:hover{text-decoration:underline}
+"#;
+
+const CHM_CSS: &str = r#"
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.7;color:#333;padding:20px 24px}
+.content h1{font-size:24px;margin:0 0 20px;color:#1a1a1a;border-bottom:1px solid #ddd;padding-bottom:8px}
+.content h2{font-size:20px;margin:28px 0 14px;color:#1a1a1a}
+.content h3{font-size:16px;margin:20px 0 10px;color:#333}
+.content p{margin:0 0 14px}
+.content ul,.content ol{margin:0 0 14px 24px}
+.content code{background:#f0f0f0;padding:2px 5px;border-radius:3px;font-size:90%}
+.content pre{background:#f5f5f5;padding:14px;border-radius:4px;margin:0 0 14px}
+.content pre code{background:none;padding:0}
+.content blockquote{border-left:3px solid #ddd;padding:6px 14px;margin:0 0 14px;color:#666}
+.content table{border-collapse:collapse;width:100%;margin:0 0 14px}
+.content th,.content td{border:1px solid #ddd;padding:6px 10px}
+.content th{background:#f0f0f0}
+.content img{max-width:100%;height:auto}
+"#;
+
+// ═══════════════════════════════════════════════════════════════
+// Tests
+// ═══════════════════════════════════════════════════════════════
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::workspace;
     use tempfile::TempDir;
 
+    /// Create a minimal workspace with two chapters for export testing.
+    fn setup_test_workspace(dir: &Path) {
+        workspace::create_workspace(dir, "测试文档", "测试作者", Some("zh-CN")).unwrap();
+
+        // Chapter 1
+        let ch1 = dir.join("01-intro");
+        fs::create_dir_all(ch1.join("assets")).unwrap();
+        fs::write(
+            ch1.join("index.md"),
+            "# 入门指南\n\n欢迎使用本书。\n",
+        )
+        .unwrap();
+        fs::write(
+            ch1.join("quick-start.md"),
+            "# 快速开始\n\n## 安装\n\n运行 `npm install`。\n\n> 注意：需要 Node.js 18+\n",
+        )
+        .unwrap();
+
+        // Chapter 2
+        let ch2 = dir.join("02-arch");
+        fs::create_dir_all(ch2.join("assets")).unwrap();
+        fs::write(ch2.join("index.md"), "# 系统架构\n\n架构概述。\n").unwrap();
+
+        // Write SUMMARY
+        let summary = "# 测试文档\n\
+                        - [入门指南](01-intro/index.md)\n\
+                          - [快速开始](01-intro/quick-start.md)\n\
+                        - [系统架构](02-arch/index.md)\n";
+        fs::write(dir.join("SUMMARY.md"), summary).unwrap();
+    }
+
     #[test]
-    fn export_chm_returns_output_path() {
-        let dir = TempDir::new().unwrap();
-        let result = export_chm(dir.path(), "/tmp/dist/chm-v1", None);
+    fn export_nginx_creates_html_files() {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("ws");
+        setup_test_workspace(&ws);
+
+        let out = tmp.path().join("dist").join("nginx-v1");
+        let out_str = out.to_str().unwrap();
+
+        let result = export_nginx(&ws, out_str, None, None, None);
+        assert!(result.is_ok(), "export_nginx failed: {:?}", result);
+
+        // Verify output directory exists
+        assert!(out.is_dir());
+
+        // Verify index.html exists
+        assert!(out.join("index.html").exists());
+
+        // Verify chapter HTML files exist
+        assert!(out.join("01-intro").join("index.html").exists());
+        assert!(out.join("01-intro").join("quick-start.html").exists());
+        assert!(out.join("02-arch").join("index.html").exists());
+
+        // Verify HTML content contains converted markdown
+        let intro_html =
+            fs::read_to_string(out.join("01-intro").join("index.html")).unwrap();
+        assert!(intro_html.contains("欢迎使用本书"));
+        assert!(intro_html.contains("sidebar")); // Has navigation
+        assert!(intro_html.contains("快速开始")); // Nav link
+
+        let quick_html =
+            fs::read_to_string(out.join("01-intro").join("quick-start.html")).unwrap();
+        assert!(quick_html.contains("npm install"));
+        assert!(quick_html.contains("注意"));
+
+        // Verify index.html contains chapter links
+        let index_html = fs::read_to_string(out.join("index.html")).unwrap();
+        assert!(index_html.contains("测试文档"));
+        assert!(index_html.contains("入门指南"));
+    }
+
+    #[test]
+    fn export_nginx_with_title_override() {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("ws");
+        setup_test_workspace(&ws);
+
+        let out = tmp.path().join("dist").join("nginx-v1");
+        let result = export_nginx(
+            &ws,
+            out.to_str().unwrap(),
+            None,
+            Some("自定义书名"),
+            Some("自定义作者"),
+        );
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "/tmp/dist/chm-v1");
+
+        let index_html = fs::read_to_string(out.join("index.html")).unwrap();
+        assert!(index_html.contains("自定义书名"));
+        assert!(index_html.contains("自定义作者"));
     }
 
     #[test]
-    fn export_chm_rejects_missing_workspace() {
-        let result = export_chm(Path::new("/nonexistent/path"), "/tmp/out", None);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("不存在"));
-    }
+    fn export_nginx_with_chapter_filter() {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("ws");
+        setup_test_workspace(&ws);
 
-    #[test]
-    fn export_chm_with_chapter_scope() {
-        let dir = TempDir::new().unwrap();
-        let result = export_chm(dir.path(), "/tmp/dist/chm-v1", Some("01-intro"));
+        let out = tmp.path().join("dist").join("nginx-v1");
+        let result = export_nginx(
+            &ws,
+            out.to_str().unwrap(),
+            Some("01-intro"),
+            None,
+            None,
+        );
         assert!(result.is_ok());
+
+        // Should only have 01-intro files
+        assert!(out.join("01-intro").join("index.html").exists());
+        assert!(out.join("01-intro").join("quick-start.html").exists());
+        // Should NOT have 02-arch
+        assert!(!out.join("02-arch").exists());
     }
 
     #[test]
-    fn export_nginx_returns_output_path() {
-        let dir = TempDir::new().unwrap();
-        let result = export_nginx(dir.path(), "/tmp/dist/nginx-v1", None);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "/tmp/dist/nginx-v1");
+    fn export_chm_creates_project_files() {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("ws");
+        setup_test_workspace(&ws);
+
+        let out = tmp.path().join("dist").join("chm-v1");
+        let out_str = out.to_str().unwrap();
+
+        let result = export_chm(&ws, out_str, None, None, None);
+        assert!(result.is_ok(), "export_chm failed: {:?}", result);
+
+        // Verify .hhp and .hhc exist
+        assert!(out.join("project.hhp").exists());
+        assert!(out.join("contents.hhc").exists());
+
+        // Verify HTML files exist (no sidebar)
+        assert!(out.join("01-intro").join("index.html").exists());
+        assert!(out.join("01-intro").join("quick-start.html").exists());
+
+        // Verify HHP content
+        let hhp = fs::read_to_string(out.join("project.hhp")).unwrap();
+        assert!(hhp.contains("output.chm"));
+        assert!(hhp.contains("01-intro/index.html"));
+        assert!(hhp.contains("测试文档"));
+
+        // Verify HHC content
+        let hhc = fs::read_to_string(out.join("contents.hhc")).unwrap();
+        assert!(hhc.contains("入门指南"));
+        assert!(hhc.contains("快速开始"));
+
+        // Verify HTML has no sidebar
+        let html = fs::read_to_string(out.join("01-intro").join("index.html")).unwrap();
+        assert!(!html.contains("sidebar"));
+        assert!(html.contains("欢迎使用本书"));
     }
 
     #[test]
-    fn export_nginx_rejects_missing_workspace() {
-        let result = export_nginx(Path::new("/nonexistent/path"), "/tmp/out", None);
+    fn export_copies_assets() {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("ws");
+        setup_test_workspace(&ws);
+
+        // Create an asset file
+        fs::write(ws.join("assets").join("logo.png"), "fake-png-data").unwrap();
+        fs::write(
+            ws.join("01-intro").join("assets").join("diagram.svg"),
+            "<svg></svg>",
+        )
+        .unwrap();
+
+        let out = tmp.path().join("dist").join("nginx-v1");
+        export_nginx(&ws, out.to_str().unwrap(), None, None, None).unwrap();
+
+        // Assets should be copied
+        assert!(out.join("assets").join("logo.png").exists());
+        assert!(out.join("01-intro").join("assets").join("diagram.svg").exists());
+    }
+
+    #[test]
+    fn export_rejects_missing_workspace() {
+        let result = export_nginx(
+            Path::new("/nonexistent/path"),
+            "/tmp/out",
+            None,
+            None,
+            None,
+        );
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("不存在"));
     }
@@ -89,10 +825,45 @@ mod tests {
 
     #[test]
     fn export_pdf_accepts_existing_file() {
-        let dir = TempDir::new().unwrap();
-        let file_path = dir.path().join("test.md");
-        std::fs::write(&file_path, "# Test").unwrap();
-        let result = export_pdf(&file_path);
-        assert!(result.is_ok());
+        let tmp = TempDir::new().unwrap();
+        let file = tmp.path().join("test.md");
+        fs::write(&file, "# Test").unwrap();
+        assert!(export_pdf(&file).is_ok());
+    }
+
+    #[test]
+    fn md_to_html_handles_tables() {
+        let md = "| A | B |\n|---|---|\n| 1 | 2 |\n";
+        let html = md_to_html(md);
+        assert!(html.contains("<table>"));
+        assert!(html.contains("<th>"));
+    }
+
+    #[test]
+    fn md_to_html_handles_code_blocks() {
+        let md = "```js\nconsole.log('hi');\n```\n";
+        let html = md_to_html(md);
+        // pulldown-cmark renders fenced code blocks as <pre><code class="language-js">...</code></pre>
+        assert!(html.contains("console.log"));
+        assert!(html.contains("pre>"));
+    }
+
+    #[test]
+    fn compute_root_prefix_works() {
+        assert_eq!(compute_root_prefix("index.html"), "./");
+        assert_eq!(compute_root_prefix("01-intro/index.html"), "../");
+        assert_eq!(
+            compute_root_prefix("01-intro/sub/index.html"),
+            "../../"
+        );
+    }
+
+    #[test]
+    fn md_to_html_path_conversion() {
+        assert_eq!(
+            md_to_html_path("01-intro/quick-start.md"),
+            "01-intro/quick-start.html"
+        );
+        assert_eq!(md_to_html_path("index.md"), "index.html");
     }
 }

@@ -92,13 +92,13 @@ fn get_recent_workspaces(app: tauri::AppHandle) -> Result<Vec<sy_note_books_core
 }
 
 #[tauri::command]
-fn export_chm(workspace_path: String, output_path: String, chapter: Option<String>) -> Result<String, String> {
-    export_service::export_chm(Path::new(&workspace_path), &output_path, chapter.as_deref())
+fn export_chm(workspace_path: String, output_path: String, chapter: Option<String>, title: Option<String>, author: Option<String>) -> Result<String, String> {
+    export_service::export_chm(Path::new(&workspace_path), &output_path, chapter.as_deref(), title.as_deref(), author.as_deref())
 }
 
 #[tauri::command]
-fn export_nginx(workspace_path: String, output_path: String, chapter: Option<String>) -> Result<String, String> {
-    export_service::export_nginx(Path::new(&workspace_path), &output_path, chapter.as_deref())
+fn export_nginx(workspace_path: String, output_path: String, chapter: Option<String>, title: Option<String>, author: Option<String>) -> Result<String, String> {
+    export_service::export_nginx(Path::new(&workspace_path), &output_path, chapter.as_deref(), title.as_deref(), author.as_deref())
 }
 
 #[tauri::command]

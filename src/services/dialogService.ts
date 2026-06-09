@@ -25,7 +25,12 @@ export async function pickDirectory(): Promise<string | null> {
  */
 export async function openInFileManager(path: string): Promise<void> {
   if (isTauri) {
-    await openPath(path);
+    try {
+      await openPath(path);
+    } catch (e) {
+      console.error('[openInFileManager] Failed:', e);
+      alert(`无法打开目录：${path}\n\n请检查路径是否存在。`);
+    }
   } else {
     console.log('[dev] openInFileManager:', path);
   }
