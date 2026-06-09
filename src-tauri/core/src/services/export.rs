@@ -121,7 +121,18 @@ pub fn export_chm(
     // Copy assets
     copy_all_assets(workspace_path, output_dir, &pages)?;
 
-    Ok(output_path.to_string())
+    // Try to compile .chm using hhc.exe (Windows only)
+    let chm_result = compile_chm(output_dir);
+    match chm_result {
+        Ok(chm_path) => Ok(chm_path),
+        Err(CompileChmError::HhcNotFound) => {
+            // hhc.exe not available — return project directory
+            Ok(output_path.to_string())
+        }
+        Err(CompileChmError::CompilationFailed(msg)) => {
+            Err(format!("CHM 编译失败：{msg}"))
+        }
+    }
 }
 
 /// Export a single Markdown file as PDF.
@@ -132,6 +143,75 @@ pub fn export_pdf(file_path: &Path) -> Result<(), String> {
         return Err(format!("文件不存在：{}", file_path.display()));
     }
     Ok(())
+}
+
+/// Copy an export output directory to a user-selected destination.
+/// Used by the "另存为" (Save As) button in the export dialog.
+pub fn copy_export_output(src: &Path, dst: &Path) -> Result<(), String> {
+    if !src.exists() {
+        return Err(format!("源目录不存在：{}", src.display()));
+    }
+    copy_dir_recursive(src, dst)?;
+    Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CHM compilation via hhc.exe (Windows only)
+// ═══════════════════════════════════════════════════════════════
+
+enum CompileChmError {
+    HhcNotFound,
+    CompilationFailed(String),
+}
+
+/// Try to find and run hhc.exe to compile the .chm file.
+/// On success, returns the path to the compiled .chm.
+/// On non-Windows or hhc.exe not found, returns HhcNotFound (not an error).
+fn compile_chm(output_dir: &Path) -> Result<String, CompileChmError> {
+    // Only attempt on Windows
+    if cfg!(not(target_os = "windows")) {
+        return Err(CompileChmError::HhcNotFound);
+    }
+
+    let hhp_path = output_dir.join("project.hhp");
+    if !hhp_path.exists() {
+        return Err(CompileChmError::HhcNotFound);
+    }
+
+    // Search for hhc.exe in common locations
+    let candidates = [
+        r"C:\Program Files (x86)\HTML Help Workshop\hhc.exe",
+        r"C:\Program Files\HTML Help Workshop\hhc.exe",
+    ];
+
+    let hhc_exe = candidates
+        .iter()
+        .find(|p| Path::new(p).exists())
+        .map(|p| p.to_string());
+
+    let hhc_exe = match hhc_exe {
+        Some(exe) => exe,
+        None => return Err(CompileChmError::HhcNotFound),
+    };
+
+    // Run hhc.exe project.hhp
+    // Note: hhc.exe returns 0 on failure, 1 on success (non-standard)
+    let output = std::process::Command::new(&hhc_exe)
+        .arg(&hhp_path)
+        .current_dir(output_dir)
+        .output()
+        .map_err(|e| CompileChmError::CompilationFailed(format!("执行 hhc.exe 失败：{e}")))?;
+
+    let chm_path = output_dir.join("output.chm");
+    if chm_path.exists() {
+        Ok(chm_path.to_string_lossy().to_string())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(CompileChmError::CompilationFailed(format!(
+            "hhc.exe 未生成 .chm 文件。{}",
+            if stderr.is_empty() { String::new() } else { format!("错误：{stderr}") }
+        )))
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════

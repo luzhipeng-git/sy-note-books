@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { useExportStore } from '../../stores/exportStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useSettingsStore } from '../../stores/settingsStore';
-import { openInFileManager } from '../../services/dialogService';
+import { openInFileManager, pickDirectory } from '../../services/dialogService';
+import { invokeIPC } from '../../services/ipc';
 import type { ExportType } from '../../types/export';
 
 const EXPORT_CARDS: { type: ExportType; icon: string; title: string; desc: string }[] = [
@@ -225,11 +226,15 @@ export function ExportDialog() {
             <div className="export-result-title">导出成功</div>
             <div className="export-result-path">{outputPath ?? '未知路径'}</div>
             <div className="export-actions export-actions-center">
-              <button className="btn btn-primary" onClick={() => {
-                if (outputPath) {
-                  // Open the exact output directory (e.g., workspace/dist/chm-v1)
-                  // Real "save as" (copy to user-selected dir) requires Rust backend — TODO
-                  openInFileManager(outputPath);
+              <button className="btn btn-primary" onClick={async () => {
+                if (!outputPath) return;
+                const dst = await pickDirectory();
+                if (!dst) return;
+                try {
+                  await invokeIPC('copy_export_output', { src: outputPath, dst });
+                  openInFileManager(dst);
+                } catch (e) {
+                  alert(`复制失败：${e instanceof Error ? e.message : String(e)}`);
                 }
               }}>另存为...</button>
               <button className="btn btn-secondary" onClick={() => {

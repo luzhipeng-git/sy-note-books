@@ -121,6 +121,11 @@ fn export_pdf(file_path: String) -> Result<(), String> {
     export_service::export_pdf(Path::new(&file_path))
 }
 
+#[tauri::command]
+fn copy_export_output(src: String, dst: String) -> Result<(), String> {
+    export_service::copy_export_output(Path::new(&src), Path::new(&dst))
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -147,6 +152,7 @@ pub fn run() {
             export_chm,
             export_nginx,
             export_pdf,
+            copy_export_output,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

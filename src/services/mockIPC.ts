@@ -329,6 +329,11 @@ const mockData: Record<string, (args?: Record<string, unknown>) => unknown> = {
 
   export_pdf: () => undefined,
 
+  copy_export_output: () => {
+    console.log('[mockIPC] copy_export_output: simulated');
+    return undefined;
+  },
+
   read_all_md_files: () => [
     { path: '01-getting-started/index.md', content: '# 入门指南\n\n## 快速开始\n\n欢迎使用书昀笔记电子书。这是一个面向技术写作者的桌面应用。\n\n### 安装\n\n下载安装包并按照提示安装即可。' },
     { path: '01-getting-started/install.md', content: '# 安装说明\n\n## 系统要求\n\n- macOS 12+、Windows 10+ 或 Linux\n- 配置 API 密钥前需要先注册开发者账号\n\n## 安装步骤\n\n1. 下载安装包\n2. 运行安装程序\n3. 配置环境变量' },
