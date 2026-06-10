@@ -3256,6 +3256,7 @@ dependencies = [
 name = "sy-note-books-core"
 version = "0.1.0"
 dependencies = [
+ "encoding_rs",
  "percent-encoding",
  "pulldown-cmark",
  "resvg",
