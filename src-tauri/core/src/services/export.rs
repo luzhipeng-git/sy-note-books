@@ -307,10 +307,10 @@ fn md_to_html(md: &str) -> String {
 /// - `asset://localhost/path` → relative path from md_rel_path to workspace
 /// - `http://asset.localhost/path` → same
 /// - `https://asset.localhost/path` → same
-fn rewrite_asset_urls(html: &str, workspace_path: &Path, md_rel_path: &str) -> String {
-    let mut result = html.to_string();
+fn rewrite_asset_urls(html: &str, workspace_path: &Path, _md_rel_path: &str) -> String {
+    // Collect all replacements first, then apply them (avoids index-shifting bugs)
+    let mut replacements: Vec<(String, String)> = Vec::new();
 
-    // Tauri asset protocol patterns
     let patterns = [
         "asset://localhost/",
         "http://asset.localhost/",
@@ -318,36 +318,38 @@ fn rewrite_asset_urls(html: &str, workspace_path: &Path, md_rel_path: &str) -> S
     ];
 
     for pattern in &patterns {
-        let pat_len = pattern.len();
-        let mut start = 0;
-        while let Some(pos) = result[pat_len + start..].find(pattern) {
-            let abs_pos = start + pat_len + pos;
-            // Find end of URL (next quote or space)
-            let url_start = abs_pos + pat_len;
-            let rest = &result[url_start..];
-            let url_end = rest.find(&['"', ' ', '\'', '>'][..]).unwrap_or(rest.len());
+        let mut search_from = 0;
+        while let Some(pos) = html[search_from..].find(pattern) {
+            let abs_pos = search_from + pos;
+            let url_start = abs_pos + pattern.len();
+
+            // Find end of URL (next quote, space, or tag close)
+            let rest = &html[url_start..];
+            let url_end = rest
+                .find(&['"', ' ', '\'', '>'][..])
+                .unwrap_or(rest.len());
             let asset_path = &rest[..url_end];
 
-            // Extract the file system path after the protocol
-            // e.g. "E:/test-notes/滑音/assets/img-001.png"
-            // On Windows the path may use forward slashes
+            // Try to convert absolute path to relative
             let fs_path = Path::new(asset_path);
-
-            // Compute relative path from the HTML file to the asset
             if let Ok(rel) = fs_path.strip_prefix(workspace_path) {
                 let rel_str = rel.to_string_lossy().replace('\\', "/");
-                // Replace the full URL with relative path
                 let full_url = format!("{pattern}{asset_path}");
-                result = result.replacen(&full_url, &rel_str, 1);
-                // Continue scanning after the replacement
-                start = abs_pos.min(result.len());
-            } else {
-                // Can't strip prefix — skip this occurrence
-                start = url_start;
+                // Avoid duplicate replacements
+                if !replacements.iter().any(|(old, _)| old == &full_url) {
+                    replacements.push((full_url, rel_str));
+                }
             }
+
+            search_from = url_start + 1;
         }
     }
 
+    // Apply replacements to a new string
+    let mut result = html.to_string();
+    for (old, new) in &replacements {
+        result = result.replace(old, new);
+    }
     result
 }
 
