@@ -162,6 +162,112 @@ pub fn export_pdf(file_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Generate a single HTML file for PDF printing.
+/// All workspace pages are merged into one HTML with page-break dividers.
+/// Images use relative paths (rewrite_asset_urls), so they work in file:// context.
+/// Returns the HTML string for the frontend to open and print.
+pub fn export_pdf_html(
+    workspace_path: &Path,
+    chapter: Option<&str>,
+    title_override: Option<&str>,
+    author_override: Option<&str>,
+) -> Result<String, String> {
+    let (meta, entries) = read_workspace(workspace_path, title_override, author_override)?;
+    let filtered = filter_entries(&entries, chapter);
+    if filtered.is_empty() {
+        return Err("没有可导出的内容".to_string());
+    }
+
+    let pages = collect_pages(&filtered);
+    let mut pages_html = String::new();
+
+    for (i, (title, md_rel_path)) in pages.iter().enumerate() {
+        let md_abs = workspace_path.join(md_rel_path);
+        if !md_abs.exists() {
+            continue;
+        }
+        let md_content = fs::read_to_string(&md_abs)
+            .map_err(|e| format!("读取 {} 失败：{e}", md_rel_path))?;
+        let html_content = md_to_html(&md_content);
+        let html_content = rewrite_asset_urls(&html_content, workspace_path, md_rel_path);
+
+        // Page break before each page (except the first)
+        if i > 0 {
+            pages_html.push_str(r#"<div style="page-break-before: always"></div>"#);
+        }
+
+        pages_html.push_str(&format!(
+            r#"<h1 class="chapter-title">{title}</h1>
+<article class="content">{content}</article>"#,
+            title = html_escape(title),
+            content = html_content,
+        ));
+    }
+
+    let html = format!(
+        r##"<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>{title}</title>
+<base href="file://{workspace_path}/">
+<style>
+{css}
+</style>
+</head>
+<body>
+<div class="cover">
+<h1>{title}</h1>
+<p class="author">作者：{author}</p>
+</div>
+{pages}
+</body>
+</html>"##,
+        title = html_escape(&meta.title),
+        workspace_path = workspace_path.to_string_lossy().replace('\\', "/"),
+        author = html_escape(&meta.author),
+        css = PDF_CSS,
+        pages = pages_html,
+    );
+
+    Ok(html)
+}
+
+const PDF_CSS: &str = r#"
+@page { size: A4; margin: 2cm; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: -apple-system, "Segoe UI", Roboto, "Noto Sans SC", sans-serif;
+    line-height: 1.7; color: #333; font-size: 11pt;
+}
+.cover {
+    text-align: center; padding-top: 120pt; page-break-after: always;
+}
+.cover h1 { font-size: 24pt; margin-bottom: 16pt; }
+.cover .author { font-size: 12pt; color: #666; }
+.chapter-title {
+    font-size: 18pt; color: #1a1a1a; border-bottom: 2px solid #ddd;
+    padding-bottom: 6pt; margin: 0 0 20pt; page-break-after: avoid;
+}
+.content p { margin: 0 0 10pt; }
+.content h2 { font-size: 15pt; margin: 20pt 0 10pt; page-break-after: avoid; }
+.content h3 { font-size: 13pt; margin: 16pt 0 8pt; page-break-after: avoid; }
+.content ul, .content ol { margin: 0 0 10pt 20pt; }
+.content code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; font-size: 90%; }
+.content pre {
+    background: #f5f5f5; padding: 10pt; border-radius: 4px;
+    overflow-x: auto; margin: 0 0 10pt; white-space: pre-wrap; word-wrap: break-word;
+}
+.content pre code { background: none; padding: 0; }
+.content blockquote {
+    border-left: 3px solid #ddd; padding: 4pt 12pt; margin: 0 0 10pt; color: #666;
+}
+.content table { border-collapse: collapse; width: 100%; margin: 0 0 10pt; }
+.content th, .content td { border: 1px solid #ddd; padding: 4pt 8pt; text-align: left; }
+.content th { background: #f0f0f0; }
+.content img { max-width: 100%; height: auto; page-break-inside: avoid; }
+"#;
+
 /// Copy an export output to a user-selected destination.
 /// If `src` is a file (e.g., .chm), copies it into `dst/`.
 /// If `src` is a directory, copies the directory into `dst/` as a subdirectory.

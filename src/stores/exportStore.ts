@@ -92,11 +92,17 @@ export const useExportStore = create<ExportState>()((set, get) => ({
     const { exportType, scope, selectedChapter, titleOverride, authorOverride } = get();
     if (!workspacePath) return;
 
-    // PDF: trigger browser print directly
+    // PDF: trigger browser print via Rust-generated HTML
     if (exportType === 'pdf') {
-      set(initialState); // close dialog
-      const { exportPdfViaPrint } = await import('../services/exportService');
-      exportPdfViaPrint();
+      const chapter = scope === 'chapter' ? selectedChapter : undefined;
+      set({ step: 'progress', progress: 30, progressText: '生成 PDF 内容...', progressDetail: '' });
+      try {
+        const { exportPdfViaIpc } = await import('../services/exportService');
+        await exportPdfViaIpc(workspacePath, chapter ?? undefined, titleOverride || undefined, authorOverride || undefined);
+        set(initialState); // close dialog after print dialog appears
+      } catch (e) {
+        set({ step: 'error', errorMessage: e instanceof Error ? e.message : String(e) });
+      }
       return;
     }
 

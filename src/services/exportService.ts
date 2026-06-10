@@ -1,86 +1,38 @@
-/** Print styles injected into the export iframe for PDF generation. */
-const PRINT_STYLES = `
-@media print {
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    font-size: 12pt;
-    line-height: 1.6;
-    color: #000;
-    max-width: 100%;
-    margin: 0;
-    padding: 1cm;
-  }
-  h1 { font-size: 20pt; margin-top: 24pt; page-break-after: avoid; }
-  h2 { font-size: 16pt; margin-top: 20pt; page-break-after: avoid; }
-  h3 { font-size: 14pt; margin-top: 16pt; page-break-after: avoid; }
-  h4, h5, h6 { font-size: 12pt; margin-top: 12pt; page-break-after: avoid; }
-  pre {
-    background: #f5f5f5;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    padding: 8pt;
-    font-size: 9pt;
-    overflow-x: auto;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-  }
-  code {
-    font-family: 'Fira Code', 'Consolas', monospace;
-    font-size: 9pt;
-  }
-  img {
-    max-width: 100%;
-    page-break-inside: avoid;
-  }
-  table {
-    border-collapse: collapse;
-    width: 100%;
-    margin: 8pt 0;
-  }
-  th, td {
-    border: 1px solid #ccc;
-    padding: 4pt 8pt;
-    text-align: left;
-  }
-  th { background: #f5f5f5; font-weight: 600; }
-  blockquote {
-    border-left: 3px solid #ccc;
-    margin-left: 0;
-    padding-left: 12pt;
-    color: #555;
-  }
-  a { color: #2563eb; text-decoration: none; }
-  .vditor-ir { display: none; }
-}
-`;
+import { invokeIPC } from './ipc';
 
 /**
- * Export the current Vditor editor content as PDF via the browser print dialog.
- * Creates a hidden iframe, injects rendered HTML with print styles,
- * triggers window.print(), then cleans up.
+ * Export workspace as PDF via Rust-generated HTML + browser print dialog.
+ *
+ * Flow:
+ * 1. Call export_pdf_html IPC to get a complete HTML string
+ *    (all pages merged, images as relative paths, print-ready CSS)
+ * 2. Write the HTML to a temp file in the workspace
+ * 3. Load it in a hidden iframe using file:// protocol
+ * 4. Trigger window.print() for the user to save as PDF
  */
-export function exportPdfViaPrint(): void {
-  // Find the Vditor instance's rendered HTML
-  const vditorIr = document.querySelector('.vditor-ir');
-  if (!vditorIr) {
-    console.warn('[exportService] Vditor IR element not found');
-    return;
+export async function exportPdfViaIpc(
+  workspacePath: string,
+  chapter?: string,
+  title?: string,
+  author?: string,
+): Promise<void> {
+  // 1. Get HTML from Rust backend
+  const html = await invokeIPC<string>('export_pdf_html', {
+    workspacePath,
+    chapter: chapter ?? null,
+    title: title ?? null,
+    author: author ?? null,
+  });
+
+  if (!html) {
+    throw new Error('导出 PDF 失败：未生成 HTML 内容');
   }
 
-  // Get the HTML content from Vditor IR preview
-  const previewContent = vditorIr.querySelector('.vditor-reset');
-  if (!previewContent) {
-    console.warn('[exportService] Vditor reset element not found');
-    return;
-  }
+  // 2. Write to a temp file so images (relative paths) can be resolved
+  const tmpPath = `${workspacePath}/dist/_pdf_preview.html`;
+  await invokeIPC('save_file', { path: tmpPath, content: html });
 
-  const htmlContent = (previewContent as HTMLElement).innerHTML;
-  if (!htmlContent || !htmlContent.trim()) {
-    console.warn('[exportService] No content to export');
-    return;
-  }
-
-  // Create hidden iframe
+  // 3. Create hidden iframe and load the file
   const iframe = document.createElement('iframe');
   iframe.style.position = 'fixed';
   iframe.style.left = '-9999px';
@@ -92,23 +44,29 @@ export function exportPdfViaPrint(): void {
 
   const doc = iframe.contentDocument;
   if (!doc) {
-    document.body.removeChild(iframe);
-    return;
+    iframe.remove();
+    throw new Error('无法创建打印预览');
   }
 
-  // Write content with print styles
-  doc.open();
-  doc.write(`<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <style>${PRINT_STYLES}</style>
-</head>
-<body>${htmlContent}</body>
-</html>`);
-  doc.close();
+  // For Tauri: load via asset protocol so file:// and images resolve correctly
+  const isTauri = '__TAURI_INTERNALS__' in window;
+  if (isTauri) {
+    const { convertFileSrc } = await import('@tauri-apps/api/core');
+    const fileUrl = convertFileSrc(tmpPath);
 
-  // Wait for images to load, then print
+    await new Promise<void>((resolve, reject) => {
+      iframe.onload = () => resolve();
+      iframe.onerror = () => reject(new Error('加载打印预览失败'));
+      iframe.src = fileUrl;
+    });
+  } else {
+    // Fallback: write HTML directly (images won't work in dev mode)
+    doc.open();
+    doc.write(html);
+    doc.close();
+  }
+
+  // 4. Wait for images to load, then print
   const images = doc.querySelectorAll('img');
   const imagePromises = Array.from(images).map(
     (img) =>
@@ -122,23 +80,20 @@ export function exportPdfViaPrint(): void {
       }),
   );
 
-  Promise.all(imagePromises).then(() => {
-    const win = iframe.contentWindow;
-    if (win) {
-      // Clean up iframe only after print dialog fully closes.
-      // Listen on the main window (not iframe) — some browsers only fire
-      // afterprint on the window that called print().
-      let removed = false;
-      const cleanup = () => {
-        if (!removed) {
-          removed = true;
-          iframe.remove();
-        }
-      };
-      window.addEventListener('afterprint', cleanup, { once: true });
-      win.print();
-      // Safety fallback in case afterprint never fires (e.g. old browsers)
-      setTimeout(cleanup, 30000);
-    }
-  });
+  await Promise.all(imagePromises);
+
+  // 5. Trigger print
+  const win = iframe.contentWindow;
+  if (win) {
+    let removed = false;
+    const cleanup = () => {
+      if (!removed) {
+        removed = true;
+        iframe.remove();
+      }
+    };
+    window.addEventListener('afterprint', cleanup, { once: true });
+    win.print();
+    setTimeout(cleanup, 30000);
+  }
 }
