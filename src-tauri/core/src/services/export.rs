@@ -168,6 +168,9 @@ enum CompileChmError {
 /// Try to run chmcmd (Free Pascal CHM compiler) to compile the .chm file.
 /// `chmcmd_path`: explicit path to the chmcmd binary (bundled with the app).
 /// If None, falls back to searching PATH, then gives up.
+///
+/// On Windows, the bundled binary may be blocked by SmartScreen / Zone.Identifier.
+/// As a fallback, the binary is copied to a temp directory and executed from there.
 fn compile_chm(output_dir: &Path, chmcmd_path: Option<&Path>) -> Result<String, CompileChmError> {
     let hhp_path = output_dir.join("project.hhp");
     if !hhp_path.exists() {
@@ -187,12 +190,53 @@ fn compile_chm(output_dir: &Path, chmcmd_path: Option<&Path>) -> Result<String, 
         return Err(CompileChmError::CompilerNotFound);
     }
 
-    // chmcmd project.hhp
-    let result = std::process::Command::new(&chmcmd)
-        .arg(&hhp_path)
+    // Try executing chmcmd directly
+    match execute_chmcmd(&chmcmd, &hhp_path, output_dir) {
+        Ok(chm_path) => Ok(chm_path),
+        Err(direct_err) => {
+            // If direct execution failed, try copying to a temp directory.
+            // This works around Windows SmartScreen / Zone.Identifier (MOTW) blocking.
+            if let Ok(temp_dir) = std::env::temp_dir().canonicalize() {
+                let temp_chmcmd = temp_dir.join("chmcmd-tmp");
+                let temp_chmcmd = if cfg!(windows) {
+                    temp_chmcmd.with_extension("exe")
+                } else {
+                    temp_chmcmd
+                };
+
+                if fs::copy(&chmcmd, &temp_chmcmd).is_ok() {
+                    match execute_chmcmd(&temp_chmcmd, &hhp_path, output_dir) {
+                        Ok(chm_path) => {
+                            let _ = fs::remove_file(&temp_chmcmd);
+                            return Ok(chm_path);
+                        }
+                        Err(_) => {
+                            let _ = fs::remove_file(&temp_chmcmd);
+                        }
+                    }
+                }
+            }
+
+            // Both attempts failed — return original error
+            Err(direct_err)
+        }
+    }
+}
+
+/// Execute chmcmd with the given project file.
+fn execute_chmcmd(
+    chmcmd: &Path,
+    hhp_path: &Path,
+    output_dir: &Path,
+) -> Result<String, CompileChmError> {
+    let result = std::process::Command::new(chmcmd)
+        .arg(hhp_path)
         .current_dir(output_dir)
         .output()
-        .map_err(|e| CompileChmError::CompilationFailed(format!("执行 chmcmd 失败：{e}")))?;
+        .map_err(|e| CompileChmError::CompilationFailed(format!(
+            "执行 chmcmd 失败（{}）：{e}",
+            chmcmd.display()
+        )))?;
 
     // Check if output.chm was created
     let chm_path = output_dir.join("output.chm");
@@ -215,15 +259,11 @@ fn compile_chm(output_dir: &Path, chmcmd_path: Option<&Path>) -> Result<String, 
 /// Simple which-like search for chmcmd in PATH.
 fn which_chmcmd() -> Option<std::path::PathBuf> {
     let path_var = std::env::var_os("PATH")?;
+    let ext = if cfg!(windows) { ".exe" } else { "" };
     for dir in std::env::split_paths(&path_var) {
-        let candidate = dir.join("chmcmd");
+        let candidate = dir.join(format!("chmcmd{ext}"));
         if candidate.exists() {
             return Some(candidate);
-        }
-        // Windows: try with .exe extension
-        let candidate_exe = dir.join("chmcmd.exe");
-        if candidate_exe.exists() {
-            return Some(candidate_exe);
         }
     }
     None

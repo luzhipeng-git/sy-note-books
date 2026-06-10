@@ -93,7 +93,6 @@ fn get_recent_workspaces(app: tauri::AppHandle) -> Result<Vec<sy_note_books_core
 
 #[tauri::command]
 fn export_chm(app: tauri::AppHandle, workspace_path: String, output_path: String, chapter: Option<String>, title: Option<String>, author: Option<String>) -> Result<String, String> {
-    // Resolve bundled chmcmd binary path
     let chmcmd_path = resolve_chmcmd(&app);
     export_service::export_chm(
         Path::new(&workspace_path),
@@ -135,42 +134,80 @@ fn copy_export_output(src: String, dst: String) -> Result<(), String> {
     export_service::copy_export_output(Path::new(&src), Path::new(&dst))
 }
 
-/// Resolve the bundled chmcmd binary path from Tauri resources.
-/// Returns None if the binary is not found (dev mode or missing binary).
+/// Resolve the bundled chmcmd binary path.
+/// Searches multiple locations where Tauri externalBin may place the binary.
 fn resolve_chmcmd(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
-    use tauri::Manager;
-    let resource_dir = app.path().resource_dir().ok()?;
-
-    // Tauri externalBin naming: chmcmd-{target-triple}[.exe]
     let ext = if cfg!(windows) { ".exe" } else { "" };
-    let target = std::env::consts::ARCH.to_string()
-        + "-"
-        + std::env::consts::OS; // e.g. "x86_64-linux" — not exact triple but close enough
+    let resource_dir = app.path().resource_dir().ok();
+    let exe_dir = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf()));
 
-    // Try exact resource_dir/binaries/ first (production bundle layout)
-    let candidates = [
-        resource_dir.join(format!("binaries/chmcmd-{target}{ext}")),
-        // Common target triples
-        resource_dir.join("binaries/chmcmd-x86_64-pc-windows-msvc.exe"),
-        resource_dir.join("binaries/chmcmd-x86_64-unknown-linux-gnu"),
-        resource_dir.join("binaries/chmcmd-aarch64-apple-darwin"),
-        resource_dir.join("binaries/chmcmd-x86_64-apple-darwin"),
-    ];
+    // Platform-specific target triples
+    let target_triples: &[&str] = if cfg!(windows) {
+        &["x86_64-pc-windows-msvc"]
+    } else if cfg!(target_os = "macos") {
+        &["aarch64-apple-darwin", "x86_64-apple-darwin"]
+    } else {
+        &["x86_64-unknown-linux-gnu"]
+    };
+
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+
+    for triple in target_triples {
+        let bin_name = format!("binaries/chmcmd-{triple}{ext}");
+
+        // resource_dir/binaries/ — standard Tauri externalBin layout
+        if let Some(ref rd) = resource_dir {
+            candidates.push(rd.join(&bin_name));
+        }
+
+        // exe_dir/binaries/ — NSIS may place binaries next to exe
+        if let Some(ref ed) = exe_dir {
+            candidates.push(ed.join(&bin_name));
+        }
+
+        // resource_dir/../binaries/ — macOS .app bundle (resource_dir = Resources/)
+        if let Some(ref rd) = resource_dir {
+            if let Some(parent) = rd.parent() {
+                candidates.push(parent.join(&bin_name));
+            }
+        }
+    }
+
+    // Sidecar without binaries/ prefix
+    if let Some(ref ed) = exe_dir {
+        for triple in target_triples {
+            candidates.push(ed.join(format!("chmcmd-{triple}{ext}")));
+        }
+        candidates.push(ed.join(format!("chmcmd{ext}")));
+    }
 
     for path in &candidates {
         if path.exists() {
+            eprintln!("[chmcmd] Found binary at: {}", path.display());
             return Some(path.clone());
         }
     }
 
-    // Fallback: try next to the executable (sidecar layout)
-    if let Some(exe_dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf())) {
-        let sidecar = exe_dir.join(format!("chmcmd{ext}"));
-        if sidecar.exists() {
-            return Some(sidecar);
-        }
+    // Fallback: search PATH
+    if let Some(found) = which_chmcmd() {
+        eprintln!("[chmcmd] Found in PATH: {}", found.display());
+        return Some(found);
     }
 
+    eprintln!("[chmcmd] Binary not found. Checked: {:?}", candidates);
+    None
+}
+
+/// Search for chmcmd in system PATH.
+fn which_chmcmd() -> Option<std::path::PathBuf> {
+    let path_var = std::env::var_os("PATH")?;
+    let ext = if cfg!(windows) { ".exe" } else { "" };
+    for dir in std::env::split_paths(&path_var) {
+        let candidate = dir.join(format!("chmcmd{ext}"));
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
     None
 }
 
