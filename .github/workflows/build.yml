@@ -60,24 +60,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
-      # 4.5 Ensure chmcmd binary exists for this platform
-      # Windows + Linux binaries are committed in src-tauri/binaries/
-      # macOS binary is installed via Homebrew (not committed due to size)
-      - name: Install chmcmd (macOS only)
-        if: matrix.platform == 'macos-latest'
-        run: |
-          brew install freepascal 2>/dev/null || true
-          FPC_BIN=$(find /usr/local /opt/homebrew -name "chmcmd" -type f 2>/dev/null | head -1)
-          TARGET="${{ matrix.target }}"
-          if [ -n "$FPC_BIN" ]; then
-            cp "$FPC_BIN" "src-tauri/binaries/chmcmd-${TARGET}"
-            chmod +x "src-tauri/binaries/chmcmd-${TARGET}"
-          else
-            echo "::warning::chmcmd not found — CHM export will generate project files only"
-            mkdir -p src-tauri/binaries
-            touch "src-tauri/binaries/chmcmd-${TARGET}"
-          fi
-
       # 5. 前端依赖
       - run: pnpm install --frozen-lockfile
 
