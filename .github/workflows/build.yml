@@ -60,34 +60,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
-      # 4.5 Install chmcmd (Free Pascal CHM compiler) for each platform
-      - name: Install chmcmd (Linux)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get install -y fpc
-          cp $(which chmcmd) src-tauri/binaries/chmcmd-x86_64-unknown-linux-gnu
-          chmod +x src-tauri/binaries/chmcmd-x86_64-unknown-linux-gnu
-
-      - name: Install chmcmd (Windows)
-        if: matrix.platform == 'windows-latest'
-        shell: pwsh
-        run: |
-          choco install freepascal --yes 2>$null || `
-            (Invoke-WebRequest -Uri "https://sourceforge.net/projects/freepascal/files/Win32/3.2.2/fpc-3.2.2.i386-win32.exe/download" -OutFile fpc-setup.exe -MaximumRetryCount 3)
-          # Try to find chmcmd from FPC installation
-          $chmcmd = Get-ChildItem -Path "C:\FPC","C:\lazarus\fpc","C:\Program Files\FPC","C:\Program Files (x86)\FPC" -Filter "chmcmd.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($chmcmd) {
-            Copy-Item $chmcmd.FullName "src-tauri\binaries\chmcmd-x86_64-pc-windows-msvc.exe"
-            Write-Host "Found chmcmd: $($chmcmd.FullName)"
-          } else {
-            # Fallback: download from Chocolatey or direct
-            Write-Host "::warning::chmcmd.exe not found — CHM export will generate project files only"
-            New-Item -ItemType Directory -Path "src-tauri\binaries" -Force
-            # Create a dummy marker so Tauri doesn't fail the build
-            Set-Content -Path "src-tauri\binaries\chmcmd-x86_64-pc-windows-msvc.exe" -Value ""
-          }
-
-      - name: Install chmcmd (macOS)
+      # 4.5 Ensure chmcmd binary exists for this platform
+      # Windows + Linux binaries are committed in src-tauri/binaries/
+      # macOS binary is installed via Homebrew (not committed due to size)
+      - name: Install chmcmd (macOS only)
         if: matrix.platform == 'macos-latest'
         run: |
           brew install freepascal 2>/dev/null || true
