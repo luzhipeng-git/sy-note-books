@@ -42,6 +42,7 @@ pub fn export_nginx(
         let md_content = fs::read_to_string(&md_abs)
             .map_err(|e| format!("读取 {} 失败：{e}", md_rel_path))?;
         let html_content = md_to_html(&md_content);
+        let html_content = rewrite_asset_urls(&html_content, workspace_path, md_rel_path);
         let html_rel = md_to_html_path(md_rel_path);
         let html_abs = output_dir.join(&html_rel);
 
@@ -95,6 +96,7 @@ pub fn export_chm(
         let md_content = fs::read_to_string(&md_abs)
             .map_err(|e| format!("读取 {} 失败：{e}", md_rel_path))?;
         let html_content = md_to_html(&md_content);
+        let html_content = rewrite_asset_urls(&html_content, workspace_path, md_rel_path);
         let html_rel = md_to_html_path(md_rel_path);
         let html_abs = output_dir.join(&html_rel);
 
@@ -146,13 +148,27 @@ pub fn export_pdf(file_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Copy an export output directory to a user-selected destination.
+/// Copy an export output to a user-selected destination.
+/// If `src` is a file (e.g., .chm), copies it into `dst/`.
+/// If `src` is a directory, copies the directory into `dst/` as a subdirectory.
 /// Used by the "另存为" (Save As) button in the export dialog.
 pub fn copy_export_output(src: &Path, dst: &Path) -> Result<(), String> {
     if !src.exists() {
-        return Err(format!("源目录不存在：{}", src.display()));
+        return Err(format!("源路径不存在：{}", src.display()));
     }
-    copy_dir_recursive(src, dst)?;
+
+    if src.is_file() {
+        // Single file (e.g., .chm) — copy directly into dst/
+        let file_name = src.file_name().ok_or("无法获取文件名")?;
+        let dst_file = dst.join(file_name);
+        fs::create_dir_all(dst).map_err(|e| format!("创建目标目录失败：{e}"))?;
+        fs::copy(src, &dst_file).map_err(|e| format!("复制文件失败：{e}"))?;
+    } else {
+        // Directory — copy as subdirectory of dst
+        let dir_name = src.file_name().ok_or("无法获取目录名")?;
+        let dst_dir = dst.join(dir_name);
+        copy_dir_recursive(src, &dst_dir)?;
+    }
     Ok(())
 }
 
@@ -286,6 +302,55 @@ fn md_to_html(md: &str) -> String {
     html_output
 }
 
+/// Rewrite image/audio/video src attributes in HTML from Tauri asset protocol
+/// to relative file paths. Handles:
+/// - `asset://localhost/path` → relative path from md_rel_path to workspace
+/// - `http://asset.localhost/path` → same
+/// - `https://asset.localhost/path` → same
+fn rewrite_asset_urls(html: &str, workspace_path: &Path, md_rel_path: &str) -> String {
+    let mut result = html.to_string();
+
+    // Tauri asset protocol patterns
+    let patterns = [
+        "asset://localhost/",
+        "http://asset.localhost/",
+        "https://asset.localhost/",
+    ];
+
+    for pattern in &patterns {
+        let pat_len = pattern.len();
+        let mut start = 0;
+        while let Some(pos) = result[pat_len + start..].find(pattern) {
+            let abs_pos = start + pat_len + pos;
+            // Find end of URL (next quote or space)
+            let url_start = abs_pos + pat_len;
+            let rest = &result[url_start..];
+            let url_end = rest.find(&['"', ' ', '\'', '>'][..]).unwrap_or(rest.len());
+            let asset_path = &rest[..url_end];
+
+            // Extract the file system path after the protocol
+            // e.g. "E:/test-notes/滑音/assets/img-001.png"
+            // On Windows the path may use forward slashes
+            let fs_path = Path::new(asset_path);
+
+            // Compute relative path from the HTML file to the asset
+            if let Ok(rel) = fs_path.strip_prefix(workspace_path) {
+                let rel_str = rel.to_string_lossy().replace('\\', "/");
+                // Replace the full URL with relative path
+                let full_url = format!("{pattern}{asset_path}");
+                result = result.replacen(&full_url, &rel_str, 1);
+                // Continue scanning after the replacement
+                start = abs_pos.min(result.len());
+            } else {
+                // Can't strip prefix — skip this occurrence
+                start = url_start;
+            }
+        }
+    }
+
+    result
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Workspace reading helpers
 // ═══════════════════════════════════════════════════════════════
@@ -363,6 +428,10 @@ fn collect_pages(entries: &[&SummaryEntry]) -> Vec<(String, String)> {
 }
 
 fn collect_pages_recursive(entry: &SummaryEntry, pages: &mut Vec<(String, String)>) {
+    // Skip export output directories to avoid recursive export
+    if entry.path.starts_with("dist/") || entry.path.starts_with("dist\\") {
+        return;
+    }
     if !entry.path.is_empty() && !entry.is_missing {
         pages.push((entry.title.clone(), entry.path.clone()));
     }
@@ -646,6 +715,10 @@ fn copy_all_assets(
     }
 
     for rel_dir in &dirs_to_check {
+        // Skip dist/ directories (export output, not source content)
+        if rel_dir.starts_with("dist/") || rel_dir.starts_with("dist\\") || rel_dir == "dist" {
+            continue;
+        }
         let src = workspace_path.join(rel_dir);
         if src.is_dir() {
             let dst = output_dir.join(rel_dir);
