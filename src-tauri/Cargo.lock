@@ -3060,6 +3060,7 @@ dependencies = [
 name = "sy-note-books-core"
 version = "0.1.0"
 dependencies = [
+ "percent-encoding",
  "pulldown-cmark",
  "serde",
  "serde_json",

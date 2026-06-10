@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::Path;
 
+use percent_encoding::percent_decode_str;
 use pulldown_cmark::{html, Options, Parser};
 
 use crate::models::workspace::SummaryEntry;
@@ -331,7 +332,21 @@ fn rewrite_asset_urls(html: &str, workspace_path: &Path, _md_rel_path: &str) -> 
             let asset_path = &rest[..url_end];
 
             // Try to convert absolute path to relative
-            let fs_path = Path::new(asset_path);
+            // 1. URL-decode: HTML src may contain %20 for spaces, etc.
+            // 2. Tauri asset protocol strips the leading "/" from absolute paths
+            //    (e.g., "/home/user/ws" → "asset://localhost/home/user/ws"),
+            //    so we prepend "/" for strip_prefix to match workspace_path.
+            //    Windows paths (containing ":") already have a drive letter, no fixup needed.
+            let decoded = percent_decode_str(asset_path)
+                .decode_utf8_lossy()
+                .to_string();
+            let owned;
+            let fs_path = if !decoded.starts_with('/') && !decoded.contains(':') {
+                owned = format!("/{decoded}");
+                Path::new(&owned)
+            } else {
+                Path::new(&decoded)
+            };
             if let Ok(rel) = fs_path.strip_prefix(workspace_path) {
                 let rel_str = rel.to_string_lossy().replace('\\', "/");
                 let full_url = format!("{pattern}{asset_path}");
@@ -1088,5 +1103,186 @@ mod tests {
             "01-intro/quick-start.html"
         );
         assert_eq!(md_to_html_path("index.md"), "index.html");
+    }
+
+    // ── rewrite_asset_urls ─────────────────────────────────────
+
+    #[test]
+    fn rewrite_asset_urls_converts_tauri_protocol() {
+        // Tauri convertFileSrc("/tmp/ws/assets/img1.png") → "asset://localhost/tmp/ws/assets/img1.png"
+        // Note: no double-slash after "localhost/" — Tauri strips leading "/" from absolute path
+        let html = r#"<img src="asset://localhost/tmp/ws/assets/img1.png">"#;
+        let ws = Path::new("/tmp/ws");
+        let result = rewrite_asset_urls(html, ws, "chapter1/page1.md");
+        assert!(
+            !result.contains("asset://localhost"),
+            "asset protocol should be removed, got: {result}"
+        );
+        assert!(
+            result.contains("assets/img1.png"),
+            "should contain relative path, got: {result}"
+        );
+    }
+
+    #[test]
+    fn rewrite_asset_urls_handles_empty_input() {
+        let result = rewrite_asset_urls("", Path::new("/ws"), "test.md");
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn rewrite_asset_urls_skips_unrelated_urls() {
+        // URL outside workspace should remain untouched
+        let html = r#"<img src="asset://localhost/other/path/img.png">"#;
+        let ws = Path::new("/tmp/ws");
+        let result = rewrite_asset_urls(html, ws, "test.md");
+        assert!(
+            result.contains("asset://localhost/other/path/img.png"),
+            "unrelated URL should not be modified, got: {result}"
+        );
+    }
+
+    #[test]
+    fn rewrite_asset_urls_handles_multiple_protocols() {
+        let html = r#"<img src="http://asset.localhost/tmp/ws/a.png">
+<p><img src="https://asset.localhost/tmp/ws/b.png"></p>"#;
+        let ws = Path::new("/tmp/ws");
+        let result = rewrite_asset_urls(html, ws, "test.md");
+        assert!(!result.contains("asset.localhost"), "all protocols removed, got: {result}");
+        assert!(result.contains("a.png"), "first image converted");
+        assert!(result.contains("b.png"), "second image converted");
+    }
+
+    #[test]
+    fn rewrite_asset_urls_longest_match_first() {
+        // Ensure longer URLs are replaced first to avoid partial-match corruption
+        let html = r#"<img src="asset://localhost/tmp/ws/assets/img.png">
+<img src="asset://localhost/tmp/ws/assets/img.png.bak">"#;
+        let ws = Path::new("/tmp/ws");
+        let result = rewrite_asset_urls(html, ws, "test.md");
+        assert!(!result.contains("asset://localhost"), "all protocols removed, got: {result}");
+        assert!(result.contains("assets/img.png.bak"), "longer URL preserved correctly");
+    }
+
+    #[test]
+    fn rewrite_asset_urls_handles_windows_path() {
+        // Windows: convertFileSrc("C:/Users/test/ws/assets/img.png") → "asset://localhost/C:/Users/test/ws/assets/img.png"
+        // The path contains ":" so it should NOT get a "/" prepended
+        let html = r#"<img src="asset://localhost/C:/Users/test/ws/assets/img1.png">"#;
+        let ws = Path::new("C:/Users/test/ws");
+        let result = rewrite_asset_urls(html, ws, "chapter1/page1.md");
+        assert!(
+            !result.contains("asset://localhost"),
+            "asset protocol should be removed, got: {result}"
+        );
+        assert!(
+            result.contains("assets/img1.png"),
+            "should contain relative path, got: {result}"
+        );
+    }
+
+    #[test]
+    fn rewrite_asset_urls_handles_percent_encoded_paths() {
+        // Image filename with space: "my image.png" → "my%20image.png" in HTML src
+        let html = r#"<img src="asset://localhost/tmp/ws/assets/my%20image.png">"#;
+        let ws = Path::new("/tmp/ws");
+        let result = rewrite_asset_urls(html, ws, "test.md");
+        assert!(
+            !result.contains("asset://localhost"),
+            "asset protocol should be removed, got: {result}"
+        );
+        // The function decodes percent-encoding in the replacement path
+        assert!(
+            result.contains("assets/my image.png"),
+            "relative path should be decoded, got: {result}"
+        );
+    }
+
+    // ── copy_export_output ──────────────────────────────────────
+
+    #[test]
+    fn copy_export_output_handles_single_file() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("output.chm");
+        fs::write(&src, "chm-content").unwrap();
+
+        let dst = tmp.path().join("desktop");
+        copy_export_output(&src, &dst).unwrap();
+
+        assert!(dst.join("output.chm").exists(), "file should be copied into dst/");
+        assert_eq!(
+            fs::read_to_string(dst.join("output.chm")).unwrap(),
+            "chm-content"
+        );
+    }
+
+    #[test]
+    fn copy_export_output_handles_directory() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("site");
+        fs::create_dir_all(src.join("sub")).unwrap();
+        fs::write(src.join("index.html"), "<html/>").unwrap();
+        fs::write(src.join("sub").join("page.html"), "<p>hi</p>").unwrap();
+
+        let dst = tmp.path().join("output");
+        copy_export_output(&src, &dst).unwrap();
+
+        // src is a directory → copied as dst/site/
+        assert!(
+            dst.join("site/index.html").exists(),
+            "directory should be copied as subdirectory"
+        );
+        assert!(dst.join("site/sub/page.html").exists());
+    }
+
+    #[test]
+    fn copy_export_output_rejects_missing_source() {
+        let tmp = TempDir::new().unwrap();
+        let result = copy_export_output(
+            Path::new("/nonexistent/path/output.chm"),
+            tmp.path(),
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("不存在"));
+    }
+
+    // ── generate_hhp sanitization ───────────────────────────────
+
+    #[test]
+    fn generate_hhp_sanitizes_multiline_title() {
+        let hhp = generate_hhp("Good Title\nEVIL=INJECTED", "index.html", &[]);
+        assert!(hhp.contains("Good Title"), "first line should appear");
+        assert!(
+            !hhp.contains("EVIL=INJECTED"),
+            "injected line should be stripped, got: {hhp}"
+        );
+    }
+
+    // ── generate_hhc folder-only nodes ──────────────────────────
+
+    #[test]
+    fn generate_hhc_includes_folder_only_nodes() {
+        use crate::models::workspace::SummaryEntry;
+
+        let entry = SummaryEntry {
+            title: "分组标题".into(),
+            path: String::new(),
+            level: 0,
+            is_missing: false,
+            children: vec![SummaryEntry {
+                title: "子页面".into(),
+                path: "ch/page.md".into(),
+                level: 1,
+                is_missing: false,
+                children: vec![],
+            }],
+        };
+        let hhc = generate_hhc(&[&entry]);
+        assert!(
+            hhc.contains("分组标题"),
+            "folder node title should appear, got: {hhc}"
+        );
+        assert!(hhc.contains("子页面"), "child page should appear");
+        assert!(hhc.contains("ch/page.html"), "child path should be converted to .html");
     }
 }

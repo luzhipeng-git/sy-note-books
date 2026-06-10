@@ -68,6 +68,16 @@ jobs:
         env:
           ROLLDOWN_LOG: error
 
+      # 5.6 Rust 单元测试（每个平台都跑）
+      - name: Run Rust tests
+        run: |
+          cd src-tauri
+          cargo test --workspace
+
+      # 5.7 前端单元测试
+      - name: Run frontend tests
+        run: pnpm test
+
       # 6. 构建 Tauri + 发布
       - uses: tauri-apps/tauri-action@v0
         env:
