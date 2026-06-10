@@ -59,7 +59,7 @@ fn collect_md_files(
                 .strip_prefix(base_path)
                 .map_err(|e| format!("路径计算失败: {}", e))?
                 .to_string_lossy()
-                .to_string();
+                .replace('\\', "/");
 
             let content =
                 fs::read_to_string(&path).map_err(|e| format!("读取文件失败 {}: {}", relative, e))?;

@@ -295,6 +295,13 @@ mod tests {
         perms.set_readonly(true);
         fs::set_permissions(&readonly_dir, perms).unwrap();
 
+        // On Windows, the readonly flag on directories doesn't prevent file writes,
+        // so this test can't reliably simulate write failure. Skip on Windows.
+        #[cfg(windows)]
+        {
+            return;
+        }
+
         // Attempt to overwrite should fail (can't create .tmp files)
         let result = save_drawnix(&drawnix_path, "new data", "new svg");
         assert!(result.is_err());
