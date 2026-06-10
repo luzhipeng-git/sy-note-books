@@ -98,6 +98,7 @@ pub fn export_chm(
             .map_err(|e| format!("读取 {} 失败：{e}", md_rel_path))?;
         let html_content = md_to_html(&md_content);
         let html_content = rewrite_asset_urls(&html_content, workspace_path, md_rel_path);
+        let html_content = replace_svg_with_png(&html_content);
         let html_rel = md_to_html_path(md_rel_path);
         let html_abs = output_dir.join(&html_rel);
 
@@ -113,17 +114,29 @@ pub fn export_chm(
         .unwrap_or_else(|| "index.html".to_string());
 
     // Generate .hhp project file
+    // Prepend UTF-8 BOM so chmcmd reads it as UTF-8 instead of system ANSI (GBK on Chinese Windows)
     let hhp = generate_hhp(&meta.title, &default_topic, &file_list);
-    fs::write(output_dir.join("project.hhp"), hhp)
+    let mut hhp_bytes = b"\xEF\xBB\xBF".to_vec(); // UTF-8 BOM
+    hhp_bytes.extend_from_slice(hhp.as_bytes());
+    fs::write(output_dir.join("project.hhp"), hhp_bytes)
         .map_err(|e| format!("写入 project.hhp 失败：{e}"))?;
 
     // Generate .hhc table of contents
+    // Prepend UTF-8 BOM so chmcmd parses Chinese characters correctly
     let hhc = generate_hhc(&filtered);
-    fs::write(output_dir.join("contents.hhc"), hhc)
+    let mut hhc_bytes = b"\xEF\xBB\xBF".to_vec(); // UTF-8 BOM
+    hhc_bytes.extend_from_slice(hhc.as_bytes());
+    fs::write(output_dir.join("contents.hhc"), hhc_bytes)
         .map_err(|e| format!("写入 contents.hhc 失败：{e}"))?;
 
     // Copy assets
     copy_all_assets(workspace_path, output_dir, &pages)?;
+
+    // Convert SVG assets to PNG (CHM's IE engine doesn't support SVG)
+    let svg_count = convert_svg_assets_to_png(output_dir).unwrap_or(0);
+    if svg_count > 0 {
+        eprintln!("[export] Converted {svg_count} SVG files to PNG for CHM compatibility");
+    }
 
     // Try to compile .chm using chmcmd (Free Pascal CHM compiler)
     let chm_result = compile_chm(output_dir, chmcmd_path);
@@ -680,7 +693,9 @@ fn generate_hhc(entries: &[&SummaryEntry]) -> String {
 
     format!(
         "<!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML//EN\">\n\
-         <HTML><HEAD></head><BODY>\n\
+         <HTML><HEAD>\n\
+         <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">\n\
+         </head><BODY>\n\
          <UL>\n\
          {items}\
          </UL>\n\
@@ -722,6 +737,75 @@ fn generate_hhc_item(entry: &SummaryEntry, _depth: usize) -> String {
     }
 
     html
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SVG → PNG conversion for CHM export
+// ═══════════════════════════════════════════════════════════════
+
+/// Convert all .svg files in the output directory to .png for CHM compatibility.
+/// CHM uses IE's Trident engine which doesn't support SVG.
+/// Returns the number of files converted.
+fn convert_svg_assets_to_png(output_dir: &Path) -> Result<u32, String> {
+    let mut count = 0u32;
+    convert_svg_recursive(output_dir, &mut count)?;
+    Ok(count)
+}
+
+fn convert_svg_recursive(dir: &Path, count: &mut u32) -> Result<(), String> {
+    let entries = fs::read_dir(dir).map_err(|e| format!("读取目录失败：{e}"))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("读取目录项失败：{e}"))?;
+        let path = entry.path();
+        if path.is_dir() {
+            convert_svg_recursive(&path, count)?;
+        } else if path.extension().map_or(false, |ext| ext == "svg") {
+            let png_path = path.with_extension("png");
+            if svg_to_png(&path, &png_path).is_ok() {
+                // Remove original .svg (now replaced by .png)
+                let _ = fs::remove_file(&path);
+                *count += 1;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Render an SVG file to PNG using resvg.
+fn svg_to_png(svg_path: &Path, png_path: &Path) -> Result<(), String> {
+    let svg_data = fs::read(svg_path)
+        .map_err(|e| format!("读取 SVG 失败：{e}"))?;
+
+    let mut opt = resvg::usvg::Options::default();
+    opt.fontdb_mut().load_system_fonts();
+
+    let tree = resvg::usvg::Tree::from_data(&svg_data, &opt)
+        .map_err(|e| format!("解析 SVG 失败：{e}"))?;
+
+    let pixmap_size = tree.size().to_int_size();
+    let width = pixmap_size.width();
+    let height = pixmap_size.height();
+    if width == 0 || height == 0 {
+        return Err("SVG 尺寸为 0".to_string());
+    }
+
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(width, height)
+        .ok_or("创建 Pixmap 失败")?;
+
+    resvg::render(&tree, resvg::tiny_skia::Transform::default(), &mut pixmap.as_mut());
+
+    let png_data = pixmap.encode_png()
+        .map_err(|e| format!("编码 PNG 失败：{e}"))?;
+
+    fs::write(png_path, png_data)
+        .map_err(|e| format!("写入 PNG 失败：{e}"))?;
+
+    Ok(())
+}
+
+/// In HTML content, replace .svg image references with .png.
+fn replace_svg_with_png(html: &str) -> String {
+    html.replace(".svg", ".png")
 }
 
 // ═══════════════════════════════════════════════════════════════
