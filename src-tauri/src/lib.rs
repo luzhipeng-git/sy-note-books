@@ -92,8 +92,17 @@ fn get_recent_workspaces(app: tauri::AppHandle) -> Result<Vec<sy_note_books_core
 }
 
 #[tauri::command]
-fn export_chm(workspace_path: String, output_path: String, chapter: Option<String>, title: Option<String>, author: Option<String>) -> Result<String, String> {
-    export_service::export_chm(Path::new(&workspace_path), &output_path, chapter.as_deref(), title.as_deref(), author.as_deref())
+fn export_chm(app: tauri::AppHandle, workspace_path: String, output_path: String, chapter: Option<String>, title: Option<String>, author: Option<String>) -> Result<String, String> {
+    // Resolve bundled chmcmd binary path
+    let chmcmd_path = resolve_chmcmd(&app);
+    export_service::export_chm(
+        Path::new(&workspace_path),
+        &output_path,
+        chapter.as_deref(),
+        title.as_deref(),
+        author.as_deref(),
+        chmcmd_path.as_deref(),
+    )
 }
 
 #[tauri::command]
@@ -124,6 +133,45 @@ fn export_pdf(file_path: String) -> Result<(), String> {
 #[tauri::command]
 fn copy_export_output(src: String, dst: String) -> Result<(), String> {
     export_service::copy_export_output(Path::new(&src), Path::new(&dst))
+}
+
+/// Resolve the bundled chmcmd binary path from Tauri resources.
+/// Returns None if the binary is not found (dev mode or missing binary).
+fn resolve_chmcmd(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    use tauri::Manager;
+    let resource_dir = app.path().resource_dir().ok()?;
+
+    // Tauri externalBin naming: chmcmd-{target-triple}[.exe]
+    let ext = if cfg!(windows) { ".exe" } else { "" };
+    let target = std::env::consts::ARCH.to_string()
+        + "-"
+        + std::env::consts::OS; // e.g. "x86_64-linux" — not exact triple but close enough
+
+    // Try exact resource_dir/binaries/ first (production bundle layout)
+    let candidates = [
+        resource_dir.join(format!("binaries/chmcmd-{target}{ext}")),
+        // Common target triples
+        resource_dir.join("binaries/chmcmd-x86_64-pc-windows-msvc.exe"),
+        resource_dir.join("binaries/chmcmd-x86_64-unknown-linux-gnu"),
+        resource_dir.join("binaries/chmcmd-aarch64-apple-darwin"),
+        resource_dir.join("binaries/chmcmd-x86_64-apple-darwin"),
+    ];
+
+    for path in &candidates {
+        if path.exists() {
+            return Some(path.clone());
+        }
+    }
+
+    // Fallback: try next to the executable (sidecar layout)
+    if let Some(exe_dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf())) {
+        let sidecar = exe_dir.join(format!("chmcmd{ext}"));
+        if sidecar.exists() {
+            return Some(sidecar);
+        }
+    }
+
+    None
 }
 
 pub fn run() {

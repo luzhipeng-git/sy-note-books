@@ -71,6 +71,7 @@ pub fn export_chm(
     chapter: Option<&str>,
     title_override: Option<&str>,
     author_override: Option<&str>,
+    chmcmd_path: Option<&Path>,
 ) -> Result<String, String> {
     let (meta, entries) = read_workspace(workspace_path, title_override, author_override)?;
     let output_dir = Path::new(output_path);
@@ -121,12 +122,12 @@ pub fn export_chm(
     // Copy assets
     copy_all_assets(workspace_path, output_dir, &pages)?;
 
-    // Try to compile .chm using hhc.exe (Windows only)
-    let chm_result = compile_chm(output_dir);
+    // Try to compile .chm using chmcmd (Free Pascal CHM compiler)
+    let chm_result = compile_chm(output_dir, chmcmd_path);
     match chm_result {
         Ok(chm_path) => Ok(chm_path),
-        Err(CompileChmError::HhcNotFound) => {
-            // hhc.exe not available — return project directory
+        Err(CompileChmError::CompilerNotFound) => {
+            // chmcmd not available — return project directory
             Ok(output_path.to_string())
         }
         Err(CompileChmError::CompilationFailed(msg)) => {
@@ -160,58 +161,72 @@ pub fn copy_export_output(src: &Path, dst: &Path) -> Result<(), String> {
 // ═══════════════════════════════════════════════════════════════
 
 enum CompileChmError {
-    HhcNotFound,
+    CompilerNotFound,
     CompilationFailed(String),
 }
 
-/// Try to find and run hhc.exe to compile the .chm file.
-/// On success, returns the path to the compiled .chm.
-/// On non-Windows or hhc.exe not found, returns HhcNotFound (not an error).
-fn compile_chm(output_dir: &Path) -> Result<String, CompileChmError> {
-    // Only attempt on Windows
-    if cfg!(not(target_os = "windows")) {
-        return Err(CompileChmError::HhcNotFound);
-    }
-
+/// Try to run chmcmd (Free Pascal CHM compiler) to compile the .chm file.
+/// `chmcmd_path`: explicit path to the chmcmd binary (bundled with the app).
+/// If None, falls back to searching PATH, then gives up.
+fn compile_chm(output_dir: &Path, chmcmd_path: Option<&Path>) -> Result<String, CompileChmError> {
     let hhp_path = output_dir.join("project.hhp");
     if !hhp_path.exists() {
-        return Err(CompileChmError::HhcNotFound);
+        return Err(CompileChmError::CompilerNotFound);
     }
 
-    // Search for hhc.exe in common locations
-    let candidates = [
-        r"C:\Program Files (x86)\HTML Help Workshop\hhc.exe",
-        r"C:\Program Files\HTML Help Workshop\hhc.exe",
-    ];
-
-    let hhc_exe = candidates
-        .iter()
-        .find(|p| Path::new(p).exists())
-        .map(|p| p.to_string());
-
-    let hhc_exe = match hhc_exe {
-        Some(exe) => exe,
-        None => return Err(CompileChmError::HhcNotFound),
+    // Resolve chmcmd binary path
+    let chmcmd: std::path::PathBuf = match chmcmd_path {
+        Some(p) => p.to_path_buf(),
+        None => {
+            // Fallback: try to find chmcmd in PATH
+            which_chmcmd().ok_or(CompileChmError::CompilerNotFound)?
+        }
     };
 
-    // Run hhc.exe project.hhp
-    // Note: hhc.exe returns 0 on failure, 1 on success (non-standard)
-    let output = std::process::Command::new(&hhc_exe)
+    if !chmcmd.exists() {
+        return Err(CompileChmError::CompilerNotFound);
+    }
+
+    // chmcmd project.hhp
+    let result = std::process::Command::new(&chmcmd)
         .arg(&hhp_path)
         .current_dir(output_dir)
         .output()
-        .map_err(|e| CompileChmError::CompilationFailed(format!("执行 hhc.exe 失败：{e}")))?;
+        .map_err(|e| CompileChmError::CompilationFailed(format!("执行 chmcmd 失败：{e}")))?;
 
+    // Check if output.chm was created
     let chm_path = output_dir.join("output.chm");
     if chm_path.exists() {
         Ok(chm_path.to_string_lossy().to_string())
     } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&result.stdout);
+        let stderr = String::from_utf8_lossy(&result.stderr);
         Err(CompileChmError::CompilationFailed(format!(
-            "hhc.exe 未生成 .chm 文件。{}",
-            if stderr.is_empty() { String::new() } else { format!("错误：{stderr}") }
+            "chmcmd 未生成 .chm 文件。{}",
+            if stderr.is_empty() && stdout.is_empty() {
+                String::new()
+            } else {
+                format!("\n{stdout}\n{stderr}")
+            }
         )))
     }
+}
+
+/// Simple which-like search for chmcmd in PATH.
+fn which_chmcmd() -> Option<std::path::PathBuf> {
+    let path_var = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path_var) {
+        let candidate = dir.join("chmcmd");
+        if candidate.exists() {
+            return Some(candidate);
+        }
+        // Windows: try with .exe extension
+        let candidate_exe = dir.join("chmcmd.exe");
+        if candidate_exe.exists() {
+            return Some(candidate_exe);
+        }
+    }
+    None
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -833,7 +848,7 @@ mod tests {
         let out = tmp.path().join("dist").join("chm-v1");
         let out_str = out.to_str().unwrap();
 
-        let result = export_chm(&ws, out_str, None, None, None);
+        let result = export_chm(&ws, out_str, None, None, None, None);
         assert!(result.is_ok(), "export_chm failed: {:?}", result);
 
         // Verify .hhp and .hhc exist
