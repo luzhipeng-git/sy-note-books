@@ -431,7 +431,7 @@ fn read_workspace(
 // ═══════════════════════════════════════════════════════════════
 
 fn filter_entries<'a>(entries: &'a [SummaryEntry], chapter: Option<&str>) -> Vec<&'a SummaryEntry> {
-    match chapter {
+    let filtered: Vec<&'a SummaryEntry> = match chapter {
         None => entries.iter().collect(),
         Some(ch) => {
             // Match chapter by: path starts with chapter dir, or chapter dir is parent of entry path
@@ -446,7 +446,21 @@ fn filter_entries<'a>(entries: &'a [SummaryEntry], chapter: Option<&str>) -> Vec
                 })
                 .collect()
         }
-    }
+    };
+
+    // Always exclude dist/ entries from export output
+    filter_out_dist(&filtered)
+}
+
+/// Recursively remove entries whose path starts with dist/.
+fn filter_out_dist<'a>(entries: &[&'a SummaryEntry]) -> Vec<&'a SummaryEntry> {
+    entries
+        .iter()
+        .filter(|e| {
+            !e.path.starts_with("dist/") && !e.path.starts_with("dist\\") && e.path != "dist"
+        })
+        .copied()
+        .collect()
 }
 
 /// Flatten SummaryEntry tree into (title, md_relative_path) pairs.
@@ -659,7 +673,9 @@ fn chm_page_html(title: &str, content: &str) -> String {
 
 fn generate_hhp(title: &str, default_topic: &str, file_list: &[String]) -> String {
     // Sanitize title: remove newlines to prevent INI injection
-    let safe_title = title.lines().next().unwrap_or("Untitled");
+    // Use unicode escape for non-ASCII to survive encoding misinterpretation
+    let raw_title = title.lines().next().unwrap_or("Untitled");
+    let safe_title = html_escape_unicode(raw_title);
 
     let mut files_section = String::new();
     for f in file_list {
@@ -715,7 +731,7 @@ fn generate_hhc_item(entry: &SummaryEntry, _depth: usize) -> String {
              <param name=\"Name\" value=\"{title}\">\n\
              <param name=\"Local\" value=\"{path}\">\n\
              </OBJECT>\n",
-            title = html_escape(&entry.title),
+            title = html_escape_unicode(&entry.title),
             path = html_path,
         ));
     } else if !entry.children.is_empty() {
@@ -724,7 +740,7 @@ fn generate_hhc_item(entry: &SummaryEntry, _depth: usize) -> String {
             "<LI><OBJECT type=\"text/sitemap\">\n\
              <param name=\"Name\" value=\"{title}\">\n\
              </OBJECT>\n",
-            title = html_escape(&entry.title),
+            title = html_escape_unicode(&entry.title),
         ));
     }
 
@@ -870,6 +886,24 @@ fn write_file_with_dirs(path: &Path, content: &str) -> Result<(), String> {
     }
     fs::write(path, content).map_err(|e| format!("写入文件失败：{e}"))?;
     Ok(())
+}
+
+/// Escape HTML special chars AND encode non-ASCII as numeric HTML entities.
+/// This ensures CHM TOC entries display correctly regardless of file encoding,
+/// since ASCII-only content survives any ANSI/UTF-8 misinterpretation.
+fn html_escape_unicode(s: &str) -> String {
+    let mut result = String::with_capacity(s.len() * 2);
+    for ch in s.chars() {
+        match ch {
+            '&' => result.push_str("&amp;"),
+            '<' => result.push_str("&lt;"),
+            '>' => result.push_str("&gt;"),
+            '"' => result.push_str("&quot;"),
+            c if c.is_ascii() => result.push(c),
+            c => result.push_str(&format!("&#{};", c as u32)),
+        }
+    }
+    result
 }
 
 fn html_escape(s: &str) -> String {
@@ -1090,12 +1124,16 @@ mod tests {
         let hhp = fs::read_to_string(out.join("project.hhp")).unwrap();
         assert!(hhp.contains("output.chm"));
         assert!(hhp.contains("01-intro/index.html"));
-        assert!(hhp.contains("测试文档"));
+        // Title uses html_escape_unicode — Chinese chars encoded as &#NNNN; entities
+        assert!(!hhp.contains("测试文档"), "raw Chinese should be entity-encoded in HHP");
+        assert!(hhp.contains("&#27979;&#35797;&#25991;&#26723;"), "title should use numeric HTML entities");
 
         // Verify HHC content
         let hhc = fs::read_to_string(out.join("contents.hhc")).unwrap();
-        assert!(hhc.contains("入门指南"));
-        assert!(hhc.contains("快速开始"));
+        // TOC entries also use html_escape_unicode
+        assert!(!hhc.contains("入门指南"), "raw Chinese should be entity-encoded in HHC");
+        assert!(hhc.contains("&#20837;&#38376;&#25351;&#21335;"), "chapter title as entities");
+        assert!(hhc.contains("&#24555;&#36895;&#24320;&#22987;"), "page title as entities");
 
         // Verify HTML has no sidebar
         let html = fs::read_to_string(out.join("01-intro").join("index.html")).unwrap();
@@ -1362,11 +1400,12 @@ mod tests {
             }],
         };
         let hhc = generate_hhc(&[&entry]);
+        // Titles are now entity-encoded via html_escape_unicode
         assert!(
-            hhc.contains("分组标题"),
-            "folder node title should appear, got: {hhc}"
+            hhc.contains("&#20998;&#32452;&#26631;&#39064;"),
+            "folder node title should be entity-encoded, got: {hhc}"
         );
-        assert!(hhc.contains("子页面"), "child page should appear");
+        assert!(hhc.contains("&#23376;&#39029;&#38754;"), "child page title as entities");
         assert!(hhc.contains("ch/page.html"), "child path should be converted to .html");
     }
 }
