@@ -345,7 +345,8 @@ fn rewrite_asset_urls(html: &str, workspace_path: &Path, _md_rel_path: &str) -> 
         }
     }
 
-    // Apply replacements to a new string
+    // Apply replacements to a new string (longest first to avoid partial matches)
+    replacements.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
     let mut result = html.to_string();
     for (old, new) in &replacements {
         result = result.replace(old, new);
@@ -629,6 +630,9 @@ fn chm_page_html(title: &str, content: &str) -> String {
 }
 
 fn generate_hhp(title: &str, default_topic: &str, file_list: &[String]) -> String {
+    // Sanitize title: remove newlines to prevent INI injection
+    let safe_title = title.lines().next().unwrap_or("Untitled");
+
     let mut files_section = String::new();
     for f in file_list {
         files_section.push_str(f);
@@ -644,10 +648,10 @@ fn generate_hhp(title: &str, default_topic: &str, file_list: &[String]) -> Strin
          Display compile progress=No\n\
          Full-text search=Yes\n\
          Language=0x0804\n\
-         Title={title}\n\n\
+         Title={safe_title}\n\n\
          [FILES]\n\
          {files}",
-        title = title,
+        safe_title = safe_title,
         default_topic = default_topic,
         files = files_section,
     )
@@ -674,6 +678,7 @@ fn generate_hhc_item(entry: &SummaryEntry, _depth: usize) -> String {
     let mut html = String::new();
 
     if !entry.path.is_empty() {
+        // Leaf page — link to HTML file
         let html_path = md_to_html_path(&entry.path);
         html.push_str(&format!(
             "<LI><OBJECT type=\"text/sitemap\">\n\
@@ -682,6 +687,14 @@ fn generate_hhc_item(entry: &SummaryEntry, _depth: usize) -> String {
              </OBJECT>\n",
             title = html_escape(&entry.title),
             path = html_path,
+        ));
+    } else if !entry.children.is_empty() {
+        // Folder-only node (no page, just grouping) — still need an LI entry
+        html.push_str(&format!(
+            "<LI><OBJECT type=\"text/sitemap\">\n\
+             <param name=\"Name\" value=\"{title}\">\n\
+             </OBJECT>\n",
+            title = html_escape(&entry.title),
         ));
     }
 
