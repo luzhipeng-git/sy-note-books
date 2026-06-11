@@ -33,9 +33,9 @@
   "bundle": {
     "active": true,
     "externalBin": ["binaries/chmcmd"],
-    "resources": [
-      { "binaries/hhc/*": "binaries/hhc/" }
-    ],
+    "resources": {
+      "binaries/hhc/*": "binaries/hhc/"
+    },
     "targets": ["nsis", "dmg", "appimage", "deb"],
     "icon": [
       "icons/32x32.png",
