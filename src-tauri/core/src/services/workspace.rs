@@ -146,6 +146,20 @@ pub fn next_image_index(existing_files: &[&str], doc_name: &str) -> u32 {
 
 // === Workspace open/create ===
 
+/// On Windows, std::fs::canonicalize() returns UNC extended-length paths
+/// with a `\\?\` prefix (e.g., `\\?\E:\test-notes`). This prefix breaks
+/// file URL construction in the frontend and causes duplicate entries in
+/// recent workspaces. Strip it so the path is a clean absolute path.
+fn strip_unc_prefix(path: &Path) -> String {
+    let s = path.to_string_lossy().to_string();
+    // Windows UNC prefix: \\?\C:\... or \\?\UNC\server\share\...
+    if s.starts_with(r"\\?\") {
+        s[4..].to_string()
+    } else {
+        s
+    }
+}
+
 /// Open an existing workspace: validate, parse, check consistency, auto-repair.
 pub fn open_workspace(path: &Path) -> Result<WorkspaceInfo, String> {
     if !path.exists() {
@@ -250,7 +264,7 @@ pub fn open_workspace(path: &Path) -> Result<WorkspaceInfo, String> {
     }
 
     Ok(WorkspaceInfo {
-        root_path: canonical.to_string_lossy().to_string(),
+        root_path: strip_unc_prefix(&canonical),
         workspace_meta: meta,
         summary,
         repairs,
@@ -824,6 +838,25 @@ mod tests {
         assert_eq!(slugify("API Overview"), "api-overview");
         assert_eq!(slugify("hello_world"), "hello-world");
         assert_eq!(slugify("入门指南"), "chapter"); // Chinese fallback
+    }
+
+    #[test]
+    fn test_strip_unc_prefix() {
+        // Normal Unix path — unchanged
+        assert_eq!(
+            strip_unc_prefix(Path::new("/home/user/workspace")),
+            "/home/user/workspace"
+        );
+        // Windows drive letter without UNC prefix — unchanged
+        assert_eq!(
+            strip_unc_prefix(Path::new("E:\\test-notes")),
+            "E:\\test-notes"
+        );
+        // Windows UNC extended-length path — prefix stripped
+        assert_eq!(
+            strip_unc_prefix(Path::new(r"\\?\E:\test-notes")),
+            "E:\\test-notes"
+        );
     }
 
     #[test]
