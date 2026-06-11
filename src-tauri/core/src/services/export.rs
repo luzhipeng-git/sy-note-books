@@ -183,7 +183,7 @@ pub fn export_pdf_file_html(
         .map_err(|e| format!("读取 {} 失败：{e}", file_path))?;
     let html_content = md_to_html(&md_content);
     let html_content = rewrite_asset_urls(&html_content, workspace_path, file_path);
-    let html_content = embed_images_as_data_uri(&html_content, workspace_path);
+    let html_content = embed_images_as_data_uri(&html_content, workspace_path, file_path);
 
     let title = title_override
         .map(|t| t.to_string())
@@ -556,9 +556,17 @@ fn rewrite_asset_urls(html: &str, workspace_path: &Path, _md_rel_path: &str) -> 
 /// Replace relative image paths in HTML with base64 data URIs.
 /// This ensures images render correctly in WebView print() context,
 /// which often cannot load images from external URLs (file://, asset://, etc.).
-fn embed_images_as_data_uri(html: &str, workspace_path: &Path) -> String {
+/// `md_rel_path` is the markdown file's relative path (e.g., "01-intro/index.md")
+/// used to resolve image paths relative to the markdown file's directory.
+fn embed_images_as_data_uri(html: &str, workspace_path: &Path, md_rel_path: &str) -> String {
     let mut result = html.to_string();
     let mut search_from = 0;
+
+    // Image paths in markdown are relative to the file's directory
+    let md_dir = Path::new(md_rel_path)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
 
     loop {
         // Find next <img tag
@@ -598,9 +606,13 @@ fn embed_images_as_data_uri(html: &str, workspace_path: &Path) -> String {
             continue;
         }
 
-        // Resolve relative path and read file
+        // Resolve relative path relative to the markdown file's directory
         let relative = src.trim_start_matches("./");
-        let file_path = workspace_path.join(relative);
+        let file_path = if md_dir.is_empty() {
+            workspace_path.join(relative)
+        } else {
+            workspace_path.join(&md_dir).join(relative)
+        };
 
         if let Ok(data) = fs::read(&file_path) {
             let mime = guess_mime_from_path(&file_path);

@@ -92,7 +92,8 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
       }>('open_workspace', { path });
 
       set({
-        rootPath: info.rootPath,
+        // Normalize to forward slashes for consistent path construction
+        rootPath: info.rootPath.replace(/\\/g, '/'),
         workspaceMeta: info.workspaceMeta,
         fileTree: summaryToTree(info.summary),
         expandedFolders: new Set(
@@ -126,7 +127,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
       }>('create_workspace', { path, title, author, language });
 
       set({
-        rootPath: info.rootPath,
+        rootPath: info.rootPath.replace(/\\/g, '/'),
         workspaceMeta: info.workspaceMeta,
         fileTree: summaryToTree(info.summary),
         expandedFolders: new Set(),
