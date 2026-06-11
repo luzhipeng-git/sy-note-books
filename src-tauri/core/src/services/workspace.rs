@@ -155,7 +155,12 @@ pub fn open_workspace(path: &Path) -> Result<WorkspaceInfo, String> {
         return Err(format!("路径不是目录: {}", path.display()));
     }
 
-    let json_path = path.join("workspace.json");
+    // Canonicalize path to resolve symlinks, remove trailing slashes,
+    // and ensure consistent format regardless of input source
+    // (directory picker vs recent records).
+    let canonical = path.canonicalize().map_err(|e| format!("路径规范化失败: {e}"))?;
+
+    let json_path = canonical.join("workspace.json");
     if !json_path.exists() {
         return Err("workspace.json 不存在".to_string());
     }
@@ -164,7 +169,7 @@ pub fn open_workspace(path: &Path) -> Result<WorkspaceInfo, String> {
     let meta = parse_workspace_json(&json_content)
         .map_err(|e| format!("workspace.json 损坏: {}。请修复后重试。", e))?;
 
-    let summary_path = path.join("SUMMARY.md");
+    let summary_path = canonical.join("SUMMARY.md");
     if !summary_path.exists() {
         return Err("SUMMARY.md 不存在".to_string());
     }
@@ -173,11 +178,11 @@ pub fn open_workspace(path: &Path) -> Result<WorkspaceInfo, String> {
     let mut summary = parse_summary(&summary_content);
 
     let mut repairs = Vec::new();
-    let disk_dirs = scan_chapter_dirs(path);
+    let disk_dirs = scan_chapter_dirs(&canonical);
 
     // Mark missing files
     for entry in &mut summary {
-        let full_path = path.join(&entry.path);
+        let full_path = canonical.join(&entry.path);
         if !full_path.exists() {
             entry.is_missing = true;
             repairs.push(RepairAction {
@@ -186,7 +191,7 @@ pub fn open_workspace(path: &Path) -> Result<WorkspaceInfo, String> {
             });
         }
         for child in &mut entry.children {
-            let child_full = path.join(&child.path);
+            let child_full = canonical.join(&child.path);
             if !child_full.exists() {
                 child.is_missing = true;
                 repairs.push(RepairAction {
@@ -210,7 +215,7 @@ pub fn open_workspace(path: &Path) -> Result<WorkspaceInfo, String> {
 
     for dir_name in &disk_dirs {
         if !summary_dir_names.contains(dir_name) {
-            let dir_path = path.join(dir_name);
+            let dir_path = canonical.join(dir_name);
             let index_path = dir_path.join("index.md");
             let title = if index_path.exists() {
                 extract_first_heading(
@@ -241,11 +246,11 @@ pub fn open_workspace(path: &Path) -> Result<WorkspaceInfo, String> {
         .iter()
         .any(|r| r.kind == "added_missing_chapter")
     {
-        let _ = write_summary(path, &summary, &meta.title);
+        let _ = write_summary(&canonical, &summary, &meta.title);
     }
 
     Ok(WorkspaceInfo {
-        root_path: path.to_string_lossy().to_string(),
+        root_path: canonical.to_string_lossy().to_string(),
         workspace_meta: meta,
         summary,
         repairs,

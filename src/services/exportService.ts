@@ -5,10 +5,9 @@ import { invokeIPC } from './ipc';
  * via Rust-generated HTML + browser print dialog.
  *
  * Flow:
- * 1. Call export_pdf_file_html IPC to get HTML for the single file
- * 2. Rewrite all relative <img src> to absolute asset protocol URLs
- * 3. Write HTML into a same-origin iframe (avoids cross-origin errors)
- * 4. Trigger window.print() for the user to save as PDF
+ * 1. Call export_pdf_file_html IPC — Rust embeds images as base64 data URIs
+ * 2. Write HTML into a same-origin iframe (avoids cross-origin errors)
+ * 3. Trigger window.print() for the user to save as PDF
  */
 export async function exportPdfViaIpc(
   workspacePath: string,
@@ -16,7 +15,7 @@ export async function exportPdfViaIpc(
   title?: string,
   author?: string,
 ): Promise<void> {
-  // 1. Get HTML from Rust backend (single file only)
+  // 1. Get HTML from Rust backend (images already embedded as base64)
   const html = await invokeIPC<string>('export_pdf_file_html', {
     workspacePath,
     filePath,
@@ -28,33 +27,7 @@ export async function exportPdfViaIpc(
     throw new Error('导出 PDF 失败：未生成 HTML 内容');
   }
 
-  // 2. Convert relative image paths to absolute asset protocol URLs
-  const isTauri = '__TAURI_INTERNALS__' in window;
-  let finalHtml = html;
-
-  if (isTauri) {
-    const { convertFileSrc } = await import('@tauri-apps/api/core');
-    finalHtml = finalHtml.replace(
-      /(<img\s[^>]*?)src="([^"]+)"/g,
-      (match, prefix: string, src: string) => {
-        // Skip absolute URLs (http, data, blob, asset protocol)
-        if (
-          src.startsWith('http') ||
-          src.startsWith('data:') ||
-          src.startsWith('blob:') ||
-          src.startsWith('/') ||
-          src.startsWith('asset://')
-        ) {
-          return match;
-        }
-        const relativePath = src.replace(/^\.\//, '');
-        const absPath = `${workspacePath}/${relativePath}`;
-        return `${prefix}src="${convertFileSrc(absPath)}"`;
-      },
-    );
-  }
-
-  // 3. Create hidden iframe and write HTML directly (same-origin)
+  // 2. Create hidden iframe and write HTML directly (same-origin)
   const iframe = document.createElement('iframe');
   iframe.style.position = 'fixed';
   iframe.style.left = '-9999px';
@@ -70,27 +43,12 @@ export async function exportPdfViaIpc(
     throw new Error('无法创建打印预览');
   }
 
+  // Write HTML directly — iframe inherits parent origin, so print() works
   doc.open();
-  doc.write(finalHtml);
+  doc.write(html);
   doc.close();
 
-  // 4. Wait for images to load, then print
-  const images = doc.querySelectorAll('img');
-  const imagePromises = Array.from(images).map(
-    (img) =>
-      new Promise<void>((resolve) => {
-        if (img.complete) {
-          resolve();
-        } else {
-          img.onload = () => resolve();
-          img.onerror = () => resolve();
-        }
-      }),
-  );
-
-  await Promise.all(imagePromises);
-
-  // 5. Trigger print with robust cleanup
+  // 3. Trigger print with robust cleanup
   const win = iframe.contentWindow;
   if (win) {
     let removed = false;

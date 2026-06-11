@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::Path;
 
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use encoding_rs::GBK;
 use percent_encoding::percent_decode_str;
 use pulldown_cmark::{html, Options, Parser};
@@ -182,6 +183,7 @@ pub fn export_pdf_file_html(
         .map_err(|e| format!("读取 {} 失败：{e}", file_path))?;
     let html_content = md_to_html(&md_content);
     let html_content = rewrite_asset_urls(&html_content, workspace_path, file_path);
+    let html_content = embed_images_as_data_uri(&html_content, workspace_path);
 
     let title = title_override
         .map(|t| t.to_string())
@@ -549,6 +551,88 @@ fn rewrite_asset_urls(html: &str, workspace_path: &Path, _md_rel_path: &str) -> 
         result = result.replace(old, new);
     }
     result
+}
+
+/// Replace relative image paths in HTML with base64 data URIs.
+/// This ensures images render correctly in WebView print() context,
+/// which often cannot load images from external URLs (file://, asset://, etc.).
+fn embed_images_as_data_uri(html: &str, workspace_path: &Path) -> String {
+    let mut result = html.to_string();
+    let mut search_from = 0;
+
+    loop {
+        // Find next <img tag
+        let rest = &result[search_from..];
+        let img_pos = match rest.find("<img ") {
+            Some(p) => p,
+            None => break,
+        };
+        let img_abs = search_from + img_pos;
+
+        // Find src="..."
+        let tag_rest = &result[img_abs..];
+        let src_marker = match tag_rest.find("src=\"") {
+            Some(p) => p,
+            None => {
+                search_from = img_abs + 5;
+                continue;
+            }
+        };
+        let val_start = img_abs + src_marker + 5; // after src="
+
+        let val_rest = &result[val_start..];
+        let val_end = match val_rest.find('"') {
+            Some(p) => p,
+            None => break,
+        };
+        let src = &result[val_start..val_start + val_end];
+
+        // Skip absolute URLs
+        if src.starts_with("http")
+            || src.starts_with("data:")
+            || src.starts_with("blob:")
+            || src.starts_with("/")
+            || src.starts_with("asset://")
+        {
+            search_from = val_start + val_end + 1;
+            continue;
+        }
+
+        // Resolve relative path and read file
+        let relative = src.trim_start_matches("./");
+        let file_path = workspace_path.join(relative);
+
+        if let Ok(data) = fs::read(&file_path) {
+            let mime = guess_mime_from_path(&file_path);
+            let b64 = BASE64.encode(&data);
+            let data_uri = format!("data:{};base64,{}", mime, b64);
+
+            result = format!(
+                "{}{}{}",
+                &result[..val_start],
+                data_uri,
+                &result[val_start + val_end..]
+            );
+            search_from = val_start + data_uri.len();
+        } else {
+            search_from = val_start + val_end + 1;
+        }
+    }
+
+    result
+}
+
+fn guess_mime_from_path(path: &Path) -> &'static str {
+    match path.extension().and_then(|e| e.to_str()) {
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("svg") => "image/svg+xml",
+        Some("webp") => "image/webp",
+        Some("ico") => "image/x-icon",
+        Some("bmp") => "image/bmp",
+        _ => "application/octet-stream",
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════
