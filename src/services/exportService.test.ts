@@ -14,17 +14,15 @@ describe('exportPdfViaIpc', () => {
     document.body.innerHTML = '';
   });
 
-  it('calls export_pdf_html IPC and writes temp file', async () => {
-    const mockHtml = '<html><body>Test PDF Content</body></html>';
-    (invokeIPC as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce(mockHtml)   // export_pdf_html
-      .mockResolvedValueOnce(undefined); // save_file
+  it('calls export_pdf_html IPC and writes HTML directly into iframe', async () => {
+    const mockHtml = '<html><head><base href="file:///test/workspace/"></head><body>Test PDF Content</body></html>';
+    (invokeIPC as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockHtml);
 
-    // Mock iframe
+    const writtenHtml: string[] = [];
     const mockDoc = {
       open: vi.fn(),
       close: vi.fn(),
-      write: vi.fn(),
+      write: vi.fn((html: string) => { writtenHtml.push(html); }),
       querySelectorAll: vi.fn(() => []),
     };
     const mockIframe = {
@@ -32,28 +30,12 @@ describe('exportPdfViaIpc', () => {
       contentDocument: mockDoc as unknown as Document,
       contentWindow: { print: vi.fn() } as unknown as Window,
       remove: vi.fn(),
-      src: '',
-      onload: null as (() => void) | null,
-      onerror: null as (() => void) | null,
     };
 
     vi.spyOn(document, 'createElement').mockReturnValue(mockIframe as unknown as HTMLIFrameElement);
     vi.spyOn(document.body, 'appendChild').mockImplementation(() => mockIframe as unknown as HTMLIFrameElement);
 
-    // Trigger the onload after src is set
-    const originalSet = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'src');
-    Object.defineProperty(mockIframe, 'src', {
-      set(v: string) {
-        (mockIframe as unknown as Record<string, string>).__src = v;
-        // Trigger onload synchronously
-        if (mockIframe.onload) mockIframe.onload();
-      },
-      get() {
-        return (mockIframe as unknown as Record<string, string>).__src;
-      },
-    });
-
-    // Run without Tauri internals (falls back to doc.write)
+    // Run without Tauri internals (no base href rewrite)
     await exportPdfViaIpc('/test/workspace');
 
     expect(invokeIPC).toHaveBeenCalledWith('export_pdf_html', {
@@ -63,10 +45,13 @@ describe('exportPdfViaIpc', () => {
       author: null,
     });
 
-    expect(invokeIPC).toHaveBeenCalledWith('save_file', {
-      path: '/test/workspace/dist/_pdf_preview.html',
-      content: mockHtml,
-    });
+    // Should NOT call save_file — no temp file needed
+    expect(invokeIPC).toHaveBeenCalledTimes(1);
+
+    // Should write HTML directly via doc.write
+    expect(mockDoc.open).toHaveBeenCalled();
+    expect(mockDoc.write).toHaveBeenCalledTimes(1);
+    expect(writtenHtml[0]).toBe(mockHtml);
   });
 
   it('throws when IPC returns empty HTML', async () => {
