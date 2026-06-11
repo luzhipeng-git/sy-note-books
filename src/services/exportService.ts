@@ -1,25 +1,25 @@
 import { invokeIPC } from './ipc';
 
 /**
- * Export workspace as PDF via Rust-generated HTML + browser print dialog.
+ * Export the currently opened Markdown file as PDF
+ * via Rust-generated HTML + browser print dialog.
  *
  * Flow:
- * 1. Call export_pdf_html IPC to get a complete HTML string
- *    (all pages merged, images as relative paths, print-ready CSS)
- * 2. Rewrite the <base href="file://..."> to use Tauri asset protocol URL
- * 3. Write HTML directly into a same-origin iframe (avoids cross-origin)
+ * 1. Call export_pdf_file_html IPC to get HTML for the single file
+ * 2. Rewrite all relative <img src> to absolute asset protocol URLs
+ * 3. Write HTML into a same-origin iframe (avoids cross-origin errors)
  * 4. Trigger window.print() for the user to save as PDF
  */
 export async function exportPdfViaIpc(
   workspacePath: string,
-  chapter?: string,
+  filePath: string,
   title?: string,
   author?: string,
 ): Promise<void> {
-  // 1. Get HTML from Rust backend
-  const html = await invokeIPC<string>('export_pdf_html', {
+  // 1. Get HTML from Rust backend (single file only)
+  const html = await invokeIPC<string>('export_pdf_file_html', {
     workspacePath,
-    chapter: chapter ?? null,
+    filePath,
     title: title ?? null,
     author: author ?? null,
   });
@@ -28,17 +28,29 @@ export async function exportPdfViaIpc(
     throw new Error('导出 PDF 失败：未生成 HTML 内容');
   }
 
-  // 2. Rewrite <base href="file://..."> to asset protocol URL
-  //    so that relative image paths resolve correctly in same-origin iframe
+  // 2. Convert relative image paths to absolute asset protocol URLs
   const isTauri = '__TAURI_INTERNALS__' in window;
   let finalHtml = html;
 
   if (isTauri) {
     const { convertFileSrc } = await import('@tauri-apps/api/core');
-    const assetBase = convertFileSrc(workspacePath);
-    finalHtml = html.replace(
-      /<base href="file:\/\/[^"]*\/">/,
-      `<base href="${assetBase}/">`,
+    finalHtml = finalHtml.replace(
+      /(<img\s[^>]*?)src="([^"]+)"/g,
+      (match, prefix: string, src: string) => {
+        // Skip absolute URLs (http, data, blob, asset protocol)
+        if (
+          src.startsWith('http') ||
+          src.startsWith('data:') ||
+          src.startsWith('blob:') ||
+          src.startsWith('/') ||
+          src.startsWith('asset://')
+        ) {
+          return match;
+        }
+        const relativePath = src.replace(/^\.\//, '');
+        const absPath = `${workspacePath}/${relativePath}`;
+        return `${prefix}src="${convertFileSrc(absPath)}"`;
+      },
     );
   }
 
@@ -58,7 +70,6 @@ export async function exportPdfViaIpc(
     throw new Error('无法创建打印预览');
   }
 
-  // Write HTML directly — iframe is same-origin (about:blank → inherits parent origin)
   doc.open();
   doc.write(finalHtml);
   doc.close();
@@ -79,18 +90,25 @@ export async function exportPdfViaIpc(
 
   await Promise.all(imagePromises);
 
-  // 5. Trigger print — same-origin iframe, no cross-origin error
+  // 5. Trigger print with robust cleanup
   const win = iframe.contentWindow;
   if (win) {
     let removed = false;
     const cleanup = () => {
       if (!removed) {
         removed = true;
+        window.removeEventListener('beforeunload', handleBeforeUnload);
         iframe.remove();
       }
     };
+
+    // Ensure iframe is removed even if user closes app during print dialog
+    const handleBeforeUnload = () => cleanup();
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
     window.addEventListener('afterprint', cleanup, { once: true });
     win.print();
+    // Fallback cleanup in case afterprint doesn't fire
     setTimeout(cleanup, 30000);
   }
 }

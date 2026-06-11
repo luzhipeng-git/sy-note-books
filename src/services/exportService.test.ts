@@ -14,8 +14,8 @@ describe('exportPdfViaIpc', () => {
     document.body.innerHTML = '';
   });
 
-  it('calls export_pdf_html IPC and writes HTML directly into iframe', async () => {
-    const mockHtml = '<html><head><base href="file:///test/workspace/"></head><body>Test PDF Content</body></html>';
+  it('calls export_pdf_file_html IPC with single file path and writes HTML into iframe', async () => {
+    const mockHtml = '<html><body><img src="assets/img.png"></body></html>';
     (invokeIPC as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockHtml);
 
     const writtenHtml: string[] = [];
@@ -35,17 +35,17 @@ describe('exportPdfViaIpc', () => {
     vi.spyOn(document, 'createElement').mockReturnValue(mockIframe as unknown as HTMLIFrameElement);
     vi.spyOn(document.body, 'appendChild').mockImplementation(() => mockIframe as unknown as HTMLIFrameElement);
 
-    // Run without Tauri internals (no base href rewrite)
-    await exportPdfViaIpc('/test/workspace');
+    // Run without Tauri internals (no asset protocol rewrite)
+    await exportPdfViaIpc('/test/workspace', '01-intro/quick-start.md');
 
-    expect(invokeIPC).toHaveBeenCalledWith('export_pdf_html', {
+    expect(invokeIPC).toHaveBeenCalledWith('export_pdf_file_html', {
       workspacePath: '/test/workspace',
-      chapter: null,
+      filePath: '01-intro/quick-start.md',
       title: null,
       author: null,
     });
 
-    // Should NOT call save_file — no temp file needed
+    // Should call IPC exactly once (no save_file)
     expect(invokeIPC).toHaveBeenCalledTimes(1);
 
     // Should write HTML directly via doc.write
@@ -57,6 +57,6 @@ describe('exportPdfViaIpc', () => {
   it('throws when IPC returns empty HTML', async () => {
     (invokeIPC as ReturnType<typeof vi.fn>).mockResolvedValueOnce('');
 
-    await expect(exportPdfViaIpc('/test/workspace')).rejects.toThrow('未生成 HTML 内容');
+    await expect(exportPdfViaIpc('/test/workspace', 'test.md')).rejects.toThrow('未生成 HTML 内容');
   });
 });

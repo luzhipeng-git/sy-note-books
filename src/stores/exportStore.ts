@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { invokeIPC } from '../services/ipc';
 import type { ExportType, ExportStep } from '../types/export';
+import { useWorkspaceStore } from './workspaceStore';
 
 interface ExportState {
   // Dialog visibility
@@ -92,13 +93,17 @@ export const useExportStore = create<ExportState>()((set, get) => ({
     const { exportType, scope, selectedChapter, titleOverride, authorOverride } = get();
     if (!workspacePath) return;
 
-    // PDF: trigger browser print via Rust-generated HTML
+    // PDF: trigger browser print for the currently opened file
     if (exportType === 'pdf') {
-      const chapter = scope === 'chapter' ? selectedChapter : undefined;
+      const { activeFilePath } = useWorkspaceStore.getState();
+      if (!activeFilePath) {
+        set({ step: 'error', errorMessage: '请先打开一个文件再导出 PDF' });
+        return;
+      }
       set({ step: 'progress', progress: 30, progressText: '生成 PDF 内容...', progressDetail: '' });
       try {
         const { exportPdfViaIpc } = await import('../services/exportService');
-        await exportPdfViaIpc(workspacePath, chapter ?? undefined, titleOverride || undefined, authorOverride || undefined);
+        await exportPdfViaIpc(workspacePath, activeFilePath, titleOverride || undefined, authorOverride || undefined);
         set(initialState); // close dialog after print dialog appears
       } catch (e) {
         set({ step: 'error', errorMessage: e instanceof Error ? e.message : String(e) });

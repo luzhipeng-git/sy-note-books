@@ -140,6 +140,16 @@ fn export_pdf_html(workspace_path: String, chapter: Option<String>, title: Optio
 }
 
 #[tauri::command]
+fn export_pdf_file_html(workspace_path: String, file_path: String, title: Option<String>, author: Option<String>) -> Result<String, String> {
+    export_service::export_pdf_file_html(
+        Path::new(&workspace_path),
+        &file_path,
+        title.as_deref(),
+        author.as_deref(),
+    )
+}
+
+#[tauri::command]
 fn copy_export_output(src: String, dst: String) -> Result<(), String> {
     export_service::copy_export_output(Path::new(&src), Path::new(&dst))
 }
@@ -261,6 +271,7 @@ pub fn run() {
             export_nginx,
             export_pdf,
             export_pdf_html,
+            export_pdf_file_html,
             copy_export_output,
         ])
         .run(tauri::generate_context!())

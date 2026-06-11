@@ -163,6 +163,56 @@ pub fn export_pdf(file_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Generate HTML for printing a single Markdown file as PDF.
+/// No cover page, no multi-chapter layout — just the file's rendered content.
+/// Images are rewritten to relative paths via rewrite_asset_urls;
+/// the frontend converts them to asset protocol URLs before printing.
+pub fn export_pdf_file_html(
+    workspace_path: &Path,
+    file_path: &str,
+    title_override: Option<&str>,
+    author_override: Option<&str>,
+) -> Result<String, String> {
+    let md_abs = workspace_path.join(file_path);
+    if !md_abs.exists() {
+        return Err(format!("文件不存在：{}", file_path));
+    }
+
+    let md_content = fs::read_to_string(&md_abs)
+        .map_err(|e| format!("读取 {} 失败：{e}", file_path))?;
+    let html_content = md_to_html(&md_content);
+    let html_content = rewrite_asset_urls(&html_content, workspace_path, file_path);
+
+    let title = title_override
+        .map(|t| t.to_string())
+        .unwrap_or_else(|| {
+            Path::new(file_path)
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| "未命名".to_string())
+        });
+    let author = author_override.unwrap_or("").to_string();
+
+    let html = format!(
+        r##"<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>{title}</title>
+<style>{css}</style>
+</head>
+<body>
+<article class="content">{content}</article>
+</body>
+</html>"##,
+        title = html_escape(&title),
+        content = html_content,
+        css = PDF_CSS,
+    );
+
+    Ok(html)
+}
+
 /// Generate a single HTML file for PDF printing.
 /// All workspace pages are merged into one HTML with page-break dividers.
 /// Images use relative paths (rewrite_asset_urls), so they work in file:// context.
@@ -1320,6 +1370,46 @@ mod tests {
             "01-intro/quick-start.html"
         );
         assert_eq!(md_to_html_path("index.md"), "index.html");
+    }
+
+    #[test]
+    fn export_pdf_file_html_generates_single_page() {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("ws");
+        setup_test_workspace(&ws);
+
+        let result = export_pdf_file_html(&ws, "01-intro/index.md", None, None);
+        assert!(result.is_ok(), "export_pdf_file_html failed: {:?}", result);
+
+        let html = result.unwrap();
+        // Should contain the file's content
+        assert!(html.contains("欢迎使用本书"), "should contain file content");
+        // Should NOT contain cover page or multi-chapter markers
+        assert!(!html.contains(r#"<div class="cover">"#), "single file should not have cover page");
+        assert!(!html.contains("系统架构"), "should not contain other chapter content");
+    }
+
+    #[test]
+    fn export_pdf_file_html_with_title_override() {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("ws");
+        setup_test_workspace(&ws);
+
+        let result = export_pdf_file_html(&ws, "01-intro/index.md", Some("自定义标题"), None);
+        assert!(result.is_ok());
+        let html = result.unwrap();
+        assert!(html.contains("自定义标题"), "should use overridden title");
+    }
+
+    #[test]
+    fn export_pdf_file_html_rejects_missing_file() {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("ws");
+        setup_test_workspace(&ws);
+
+        let result = export_pdf_file_html(&ws, "nonexistent.md", None, None);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("不存在"));
     }
 
     // ── rewrite_asset_urls ─────────────────────────────────────
