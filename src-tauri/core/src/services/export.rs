@@ -360,22 +360,34 @@ fn compile_chm(output_dir: &Path, chmcmd_path: Option<&Path>) -> Result<String, 
     }
 }
 
-/// Execute chmcmd with the given project file.
+/// Execute CHM compiler (hhc.exe or chmcmd) with the given project file.
 fn execute_chmcmd(
     chmcmd: &Path,
     hhp_path: &Path,
     output_dir: &Path,
 ) -> Result<String, CompileChmError> {
+    // Microsoft hhc.exe needs to run from its own directory (where DLLs are located).
+    // Free Pascal chmcmd can run from any directory.
+    let is_hhc = chmcmd.file_name()
+        .map(|n| n.to_string_lossy().to_lowercase().starts_with("hhc"))
+        .unwrap_or(false);
+
+    let work_dir = if is_hhc {
+        chmcmd.parent().unwrap_or(output_dir)
+    } else {
+        output_dir
+    };
+
     let result = std::process::Command::new(chmcmd)
         .arg(hhp_path)
-        .current_dir(output_dir)
+        .current_dir(work_dir)
         .output()
         .map_err(|e| CompileChmError::CompilationFailed(format!(
-            "执行 chmcmd 失败（{}）：{e}",
+            "执行 CHM 编译器失败（{}）：{e}",
             chmcmd.display()
         )))?;
 
-    // Check if output.chm was created
+    // hhc.exe returns exit code 1 even on success — check output file instead
     let chm_path = output_dir.join("output.chm");
     if chm_path.exists() {
         Ok(chm_path.to_string_lossy().to_string())

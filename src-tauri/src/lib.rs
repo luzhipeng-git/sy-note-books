@@ -144,14 +144,27 @@ fn copy_export_output(src: String, dst: String) -> Result<(), String> {
     export_service::copy_export_output(Path::new(&src), Path::new(&dst))
 }
 
-/// Resolve the bundled chmcmd binary path.
-/// Searches multiple locations where Tauri externalBin may place the binary.
+/// Resolve the CHM compiler binary path.
+/// On Windows: prefers Microsoft hhc.exe (bundled in binaries/hhc/) for proper GBK/Chinese support.
+/// On macOS/Linux: uses Free Pascal chmcmd.
 fn resolve_chmcmd(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
-    let ext = if cfg!(windows) { ".exe" } else { "" };
     let resource_dir = app.path().resource_dir().ok();
     let exe_dir = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf()));
 
-    // Platform-specific target triples
+    // On Windows, try Microsoft hhc.exe first (native GBK support for Chinese CHM)
+    if cfg!(windows) {
+        let hhc_candidates = build_hhc_candidates(&resource_dir, &exe_dir);
+        for path in &hhc_candidates {
+            if path.exists() {
+                eprintln!("[chm] Found hhc.exe at: {}", path.display());
+                return Some(path.clone());
+            }
+        }
+        eprintln!("[chm] hhc.exe not found, checked: {:?}", hhc_candidates);
+    }
+
+    // Fall back to chmcmd (Free Pascal) on all platforms
+    let ext = if cfg!(windows) { ".exe" } else { "" };
     let target_triples: &[&str] = if cfg!(windows) {
         &["x86_64-pc-windows-msvc"]
     } else if cfg!(target_os = "macos") {
@@ -164,30 +177,15 @@ fn resolve_chmcmd(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
 
     for triple in target_triples {
         let bin_name = format!("binaries/chmcmd-{triple}{ext}");
-
-        // resource_dir/binaries/ — standard Tauri externalBin layout
+        if let Some(ref rd) = resource_dir { candidates.push(rd.join(&bin_name)); }
+        if let Some(ref ed) = exe_dir { candidates.push(ed.join(&bin_name)); }
         if let Some(ref rd) = resource_dir {
-            candidates.push(rd.join(&bin_name));
-        }
-
-        // exe_dir/binaries/ — NSIS may place binaries next to exe
-        if let Some(ref ed) = exe_dir {
-            candidates.push(ed.join(&bin_name));
-        }
-
-        // resource_dir/../binaries/ — macOS .app bundle (resource_dir = Resources/)
-        if let Some(ref rd) = resource_dir {
-            if let Some(parent) = rd.parent() {
-                candidates.push(parent.join(&bin_name));
-            }
+            if let Some(parent) = rd.parent() { candidates.push(parent.join(&bin_name)); }
         }
     }
 
-    // Sidecar without binaries/ prefix
     if let Some(ref ed) = exe_dir {
-        for triple in target_triples {
-            candidates.push(ed.join(format!("chmcmd-{triple}{ext}")));
-        }
+        for triple in target_triples { candidates.push(ed.join(format!("chmcmd-{triple}{ext}"))); }
         candidates.push(ed.join(format!("chmcmd{ext}")));
     }
 
@@ -198,7 +196,6 @@ fn resolve_chmcmd(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
         }
     }
 
-    // Fallback: search PATH
     if let Some(found) = which_chmcmd() {
         eprintln!("[chmcmd] Found in PATH: {}", found.display());
         return Some(found);
@@ -206,6 +203,22 @@ fn resolve_chmcmd(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
 
     eprintln!("[chmcmd] Binary not found. Checked: {:?}", candidates);
     None
+}
+
+/// Build candidate paths for Microsoft hhc.exe (Windows only).
+fn build_hhc_candidates(
+    resource_dir: &Option<std::path::PathBuf>,
+    exe_dir: &Option<std::path::PathBuf>,
+) -> Vec<std::path::PathBuf> {
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+    // hhc.exe lives in binaries/hhc/ directory (bundled as Tauri resource)
+    let hhc_rel = std::path::PathBuf::from("binaries/hhc/hhc.exe");
+    if let Some(ref rd) = resource_dir { candidates.push(rd.join(&hhc_rel)); }
+    if let Some(ref ed) = exe_dir { candidates.push(ed.join(&hhc_rel)); }
+    if let Some(ref rd) = resource_dir {
+        if let Some(parent) = rd.parent() { candidates.push(parent.join(&hhc_rel)); }
+    }
+    candidates
 }
 
 /// Search for chmcmd in system PATH.
