@@ -514,6 +514,11 @@ function exportPdf(htmlContent: string) {
 }
 ```
 
+> **安全说明：** PDF 导出和编辑器中的图片通过 Tauri Asset Protocol 加载（`convertFileSrc()`）。
+> `tauri.conf.json` 中 `assetProtocol.scope` 设为 `["**"]`，允许加载任意路径的 workspace 图片。
+> 这是因为桌面应用允许用户在任意位置创建/打开 workspace（如 `E:\test-notes`），
+> 若仅限 `$HOME` 路径则非 HOME 目录下的图片无法显示。风险可控：无远程入口、仅加载用户主动打开的 workspace 内资源。
+
 ## 4. 白板交互设计（详细）
 
 ### 4.1 触发画图的数据流
