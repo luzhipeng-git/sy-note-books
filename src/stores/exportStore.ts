@@ -93,18 +93,28 @@ export const useExportStore = create<ExportState>()((set, get) => ({
     const { exportType, scope, selectedChapter, titleOverride, authorOverride } = get();
     if (!workspacePath) return;
 
-    // PDF: trigger browser print for the currently opened file
+    // PDF: native Rust PDF generation (no WebView print)
     if (exportType === 'pdf') {
       const { activeFilePath } = useWorkspaceStore.getState();
       if (!activeFilePath) {
         set({ step: 'error', errorMessage: '请先打开一个文件再导出 PDF' });
         return;
       }
-      set({ step: 'progress', progress: 30, progressText: '生成 PDF 内容...', progressDetail: '' });
+
+      // Show save dialog to let user choose output location
+      const fileName = activeFilePath.split('/').pop()?.replace(/\.md$/, '.pdf') ?? 'output.pdf';
+      const { savePdfFile } = await import('../services/dialogService');
+      const outputPath = await savePdfFile(fileName);
+      if (!outputPath) return; // User cancelled
+
+      set({ step: 'progress', progress: 30, progressText: '生成 PDF...', progressDetail: '' });
       try {
-        const { exportPdfViaIpc } = await import('../services/exportService');
-        await exportPdfViaIpc(workspacePath, activeFilePath, titleOverride || undefined, authorOverride || undefined);
-        set(initialState); // close dialog after print dialog appears
+        const { exportPdfViaNative } = await import('../services/exportService');
+        const result = await exportPdfViaNative(
+          workspacePath, activeFilePath, outputPath,
+          titleOverride || undefined, authorOverride || undefined,
+        );
+        set({ step: 'success', outputPath: result });
       } catch (e) {
         set({ step: 'error', errorMessage: e instanceof Error ? e.message : String(e) });
       }

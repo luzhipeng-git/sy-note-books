@@ -11,6 +11,9 @@ percent-encoding = "2"
 resvg = { version = "0.47", default-features = false, features = ["text", "system-fonts"] }
 encoding_rs = "0.8"
 base64 = "0.22"
+genpdf-chinese = { version = "0.2", features = ["images"] }
+image = { version = "0.24", default-features = false, features = ["png", "jpeg"] }
+rusttype = "0.8"
 
 [dev-dependencies]
 tempfile = "3"

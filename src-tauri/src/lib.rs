@@ -154,6 +154,23 @@ fn copy_export_output(src: String, dst: String) -> Result<(), String> {
     export_service::copy_export_output(Path::new(&src), Path::new(&dst))
 }
 
+#[tauri::command]
+fn export_pdf_file(
+    workspace_path: String,
+    file_path: String,
+    output_path: String,
+    title: Option<String>,
+    author: Option<String>,
+) -> Result<(), String> {
+    export_service::export_file_as_pdf(
+        Path::new(&workspace_path),
+        &file_path,
+        Path::new(&output_path),
+        title.as_deref(),
+        author.as_deref(),
+    )
+}
+
 /// Resolve the CHM compiler binary path.
 /// On Windows: prefers Microsoft hhc.exe (bundled in binaries/hhc/) for proper GBK/Chinese support.
 /// On macOS/Linux: uses Free Pascal chmcmd.
@@ -272,6 +289,7 @@ pub fn run() {
             export_pdf,
             export_pdf_html,
             export_pdf_file_html,
+            export_pdf_file,
             copy_export_output,
         ])
         .run(tauri::generate_context!())

@@ -6,57 +6,46 @@ vi.mock('./ipc', () => ({
 }));
 
 import { invokeIPC } from './ipc';
-import { exportPdfViaIpc } from './exportService';
+import { exportPdfViaNative } from './exportService';
 
-describe('exportPdfViaIpc', () => {
+describe('exportPdfViaNative', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    document.body.innerHTML = '';
   });
 
-  it('calls export_pdf_file_html IPC with single file path and writes HTML into iframe', async () => {
-    const mockHtml = '<html><body><img src="assets/img.png"></body></html>';
-    (invokeIPC as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockHtml);
+  it('calls export_pdf_file IPC with correct parameters', async () => {
+    (invokeIPC as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
 
-    const writtenHtml: string[] = [];
-    const mockDoc = {
-      open: vi.fn(),
-      close: vi.fn(),
-      write: vi.fn((html: string) => { writtenHtml.push(html); }),
-      querySelectorAll: vi.fn(() => []),
-    };
-    const mockIframe = {
-      style: { position: '', left: '', top: '', width: '', height: '', border: '' },
-      contentDocument: mockDoc as unknown as Document,
-      contentWindow: { print: vi.fn() } as unknown as Window,
-      remove: vi.fn(),
-    };
+    const result = await exportPdfViaNative(
+      '/test/workspace',
+      '01-intro/quick-start.md',
+      '/home/user/Desktop/output.pdf',
+      '测试标题',
+      '测试作者',
+    );
 
-    vi.spyOn(document, 'createElement').mockReturnValue(mockIframe as unknown as HTMLIFrameElement);
-    vi.spyOn(document.body, 'appendChild').mockImplementation(() => mockIframe as unknown as HTMLIFrameElement);
-
-    // Run without Tauri internals (no asset protocol rewrite)
-    await exportPdfViaIpc('/test/workspace', '01-intro/quick-start.md');
-
-    expect(invokeIPC).toHaveBeenCalledWith('export_pdf_file_html', {
+    expect(invokeIPC).toHaveBeenCalledWith('export_pdf_file', {
       workspacePath: '/test/workspace',
       filePath: '01-intro/quick-start.md',
+      outputPath: '/home/user/Desktop/output.pdf',
+      title: '测试标题',
+      author: '测试作者',
+    });
+
+    expect(result).toBe('/home/user/Desktop/output.pdf');
+  });
+
+  it('passes null for missing title/author', async () => {
+    (invokeIPC as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
+
+    await exportPdfViaNative('/ws', 'test.md', '/out.pdf');
+
+    expect(invokeIPC).toHaveBeenCalledWith('export_pdf_file', {
+      workspacePath: '/ws',
+      filePath: 'test.md',
+      outputPath: '/out.pdf',
       title: null,
       author: null,
     });
-
-    // Should call IPC exactly once (no save_file)
-    expect(invokeIPC).toHaveBeenCalledTimes(1);
-
-    // Should write HTML directly via doc.write
-    expect(mockDoc.open).toHaveBeenCalled();
-    expect(mockDoc.write).toHaveBeenCalledTimes(1);
-    expect(writtenHtml[0]).toBe(mockHtml);
-  });
-
-  it('throws when IPC returns empty HTML', async () => {
-    (invokeIPC as ReturnType<typeof vi.fn>).mockResolvedValueOnce('');
-
-    await expect(exportPdfViaIpc('/test/workspace', 'test.md')).rejects.toThrow('未生成 HTML 内容');
   });
 });

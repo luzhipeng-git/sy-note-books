@@ -154,6 +154,24 @@ pub fn export_chm(
     }
 }
 
+/// Export a single Markdown file as PDF using native Rust generation.
+/// Delegates to the pdf_export module for actual PDF creation.
+pub fn export_file_as_pdf(
+    workspace_path: &Path,
+    file_path: &str,
+    output_path: &Path,
+    title_override: Option<&str>,
+    author_override: Option<&str>,
+) -> Result<(), String> {
+    crate::services::pdf_export::export_file_as_pdf(
+        workspace_path,
+        file_path,
+        output_path,
+        title_override,
+        author_override,
+    )
+}
+
 /// Export a single Markdown file as PDF.
 /// The actual PDF generation is handled by the frontend (WebView print).
 /// This function validates the file exists.
@@ -666,7 +684,7 @@ fn embed_images_as_data_uri(html: &str, workspace_path: &Path, md_rel_path: &str
 
 /// Convert raw SVG bytes to PNG bytes in memory using resvg.
 /// Returns None if SVG parsing or rendering fails (caller falls back to raw SVG).
-fn svg_to_png_bytes(svg_data: &[u8]) -> Option<Vec<u8>> {
+pub fn svg_to_png_bytes(svg_data: &[u8]) -> Option<Vec<u8>> {
     let mut opt = resvg::usvg::Options::default();
     opt.fontdb_mut().load_system_fonts();
 

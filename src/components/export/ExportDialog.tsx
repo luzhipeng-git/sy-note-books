@@ -10,7 +10,7 @@ import type { ExportType } from '../../types/export';
 const EXPORT_CARDS: { type: ExportType; icon: string; title: string; desc: string }[] = [
   { type: 'chm', icon: '📘', title: 'CHM', desc: 'Windows 帮助文件' },
   { type: 'nginx', icon: '🌐', title: 'Nginx', desc: '静态网站目录' },
-  { type: 'pdf', icon: '📄', title: 'PDF', desc: '当前文件打印' },
+  { type: 'pdf', icon: '📄', title: 'PDF', desc: '当前文件导出' },
 ];
 
 export function ExportDialog() {
@@ -189,7 +189,7 @@ export function ExportDialog() {
               </>
             ) : (
               <div className="export-pdf-hint">
-                将通过系统打印对话框导出当前文件为 PDF，支持选择纸张大小和边距。
+                将当前打开的文件直接生成为 PDF 文件。点击导出后选择保存位置。
               </div>
             )}
 

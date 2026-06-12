@@ -36,7 +36,7 @@ describe('ExportDialog', () => {
     useExportStore.getState().setExportType('pdf');
     render(<ExportDialog />);
 
-    expect(screen.getByText(/系统打印对话框/)).toBeTruthy();
+    expect(screen.getByText(/直接生成为 PDF/)).toBeTruthy();
   });
 
   it('closes dialog on cancel button click', () => {

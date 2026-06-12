@@ -1,4 +1,4 @@
-import { open as openDialog } from '@tauri-apps/plugin-dialog';
+import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
 import { open as openPath } from '@tauri-apps/plugin-shell';
 
 const isTauri = '__TAURI_INTERNALS__' in window;
@@ -15,6 +15,23 @@ export async function pickDirectory(): Promise<string | null> {
   }
   // Browser fallback: prompt for path
   const path = prompt('输入 Workspace 目录路径:');
+  return path?.trim() || null;
+}
+
+/**
+ * Open a native save file dialog for PDF export.
+ * Returns the selected file path, or null if cancelled.
+ */
+export async function savePdfFile(defaultName: string): Promise<string | null> {
+  if (isTauri) {
+    const selected = await saveDialog({
+      defaultPath: defaultName,
+      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+    });
+    return selected as string | null;
+  }
+  // Browser fallback
+  const path = prompt('输入 PDF 保存路径:', defaultName);
   return path?.trim() || null;
 }
 
