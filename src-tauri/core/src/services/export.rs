@@ -182,7 +182,10 @@ pub fn export_pdf_file_html(
     let md_content = fs::read_to_string(&md_abs)
         .map_err(|e| format!("读取 {} 失败：{e}", file_path))?;
     let html_content = md_to_html(&md_content);
-    let html_content = rewrite_asset_urls(&html_content, workspace_path, file_path);
+    // Skip rewrite_asset_urls for PDF — it converts asset:// URLs to paths
+    // relative to workspace root, which would cause double-path when
+    // embed_images_as_data_uri prepends the md file's directory.
+    // embed_images_as_data_uri handles both relative paths AND asset:// URLs.
     let html_content = embed_images_as_data_uri(&html_content, workspace_path, file_path);
 
     let title = title_override
@@ -595,28 +598,55 @@ fn embed_images_as_data_uri(html: &str, workspace_path: &Path, md_rel_path: &str
         };
         let src = &result[val_start..val_start + val_end];
 
-        // Skip absolute URLs
+        // Skip non-file URLs
         if src.starts_with("http")
             || src.starts_with("data:")
             || src.starts_with("blob:")
-            || src.starts_with("/")
-            || src.starts_with("asset://")
         {
             search_from = val_start + val_end + 1;
             continue;
         }
 
-        // Resolve relative path relative to the markdown file's directory
-        let relative = src.trim_start_matches("./");
-        let file_path = if md_dir.is_empty() {
-            workspace_path.join(relative)
+        // Resolve file path for different src formats
+        let file_path = if src.starts_with("asset://localhost/") {
+            // Tauri asset protocol URL — extract absolute file path
+            let decoded = percent_decode_str(&src["asset://localhost/".len()..])
+                .decode_utf8_lossy()
+                .to_string();
+            let owned;
+            let fs_path = if !decoded.starts_with('/') && !decoded.contains(':') {
+                owned = format!("/{decoded}");
+                Path::new(&owned)
+            } else {
+                Path::new(&decoded)
+            };
+            fs_path.to_path_buf()
+        } else if src.starts_with("/") {
+            // Absolute file path
+            Path::new(src).to_path_buf()
         } else {
-            workspace_path.join(&md_dir).join(relative)
+            // Relative path — resolve relative to the markdown file's directory
+            let relative = src.trim_start_matches("./");
+            if md_dir.is_empty() {
+                workspace_path.join(relative)
+            } else {
+                workspace_path.join(&md_dir).join(relative)
+            }
         };
 
         if let Ok(data) = fs::read(&file_path) {
-            let mime = guess_mime_from_path(&file_path);
-            let b64 = BASE64.encode(&data);
+            // SVG data URIs are unreliable in WebKitGTK print() context.
+            // Convert SVG → PNG via resvg for reliable PDF rendering.
+            let (embed_data, mime) = if file_path.extension().map_or(false, |e| e == "svg") {
+                match svg_to_png_bytes(&data) {
+                    Some(png) => (png, "image/png"),
+                    None => (data, "image/svg+xml"),
+                }
+            } else {
+                (data, guess_mime_from_path(&file_path))
+            };
+
+            let b64 = BASE64.encode(&embed_data);
             let data_uri = format!("data:{};base64,{}", mime, b64);
 
             result = format!(
@@ -632,6 +662,30 @@ fn embed_images_as_data_uri(html: &str, workspace_path: &Path, md_rel_path: &str
     }
 
     result
+}
+
+/// Convert raw SVG bytes to PNG bytes in memory using resvg.
+/// Returns None if SVG parsing or rendering fails (caller falls back to raw SVG).
+fn svg_to_png_bytes(svg_data: &[u8]) -> Option<Vec<u8>> {
+    let mut opt = resvg::usvg::Options::default();
+    opt.fontdb_mut().load_system_fonts();
+
+    let tree = resvg::usvg::Tree::from_data(svg_data, &opt).ok()?;
+    let size = tree.size().to_int_size();
+    let w = size.width();
+    let h = size.height();
+    if w == 0 || h == 0 {
+        return None;
+    }
+
+    // Scale up for print quality (2x for crisp output)
+    let scale = 2u32;
+    let pw = w.saturating_mul(scale);
+    let ph = h.saturating_mul(scale);
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(pw, ph)?;
+    let transform = resvg::tiny_skia::Transform::from_scale(scale as f32, scale as f32);
+    resvg::render(&tree, transform, &mut pixmap.as_mut());
+    pixmap.encode_png().ok()
 }
 
 fn guess_mime_from_path(path: &Path) -> &'static str {
@@ -1506,6 +1560,100 @@ mod tests {
         let result = export_pdf_file_html(&ws, "nonexistent.md", None, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("不存在"));
+    }
+
+    #[test]
+    fn embed_images_as_data_uri_resolves_relative_to_md_dir() {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("ws");
+        setup_test_workspace(&ws);
+
+        // Create an image file at 01-intro/assets/test-img.png
+        let assets_dir = ws.join("01-intro").join("assets");
+        fs::create_dir_all(&assets_dir).unwrap();
+        // Minimal valid PNG: 1x1 pixel
+        let png_bytes = vec![
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
+        ];
+        fs::write(assets_dir.join("test-img.png"), &png_bytes).unwrap();
+
+        // Create a markdown file referencing the image
+        let md_content = "# Test\n\n![test](./assets/test-img.png)\n";
+        let md_path = ws.join("01-intro").join("img-test.md");
+        fs::write(&md_path, md_content).unwrap();
+
+        let result = export_pdf_file_html(&ws, "01-intro/img-test.md", None, None);
+        assert!(result.is_ok(), "export failed: {:?}", result);
+
+        let html = result.unwrap();
+        // Image should be embedded as base64 data URI, NOT left as relative path
+        assert!(
+            html.contains("data:image/png;base64,"),
+            "image should be embedded as base64 data URI, got: {}",
+            html
+        );
+        assert!(
+            !html.contains("src=\"./assets/test-img.png\""),
+            "relative path should be replaced with data URI"
+        );
+    }
+
+    #[test]
+    fn embed_images_as_data_uri_workspace_root_image() {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("ws");
+        setup_test_workspace(&ws);
+
+        // Create an image at workspace-level assets/
+        let ws_assets = ws.join("assets");
+        fs::create_dir_all(&ws_assets).unwrap();
+        let png_bytes = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+        fs::write(ws_assets.join("root-img.png"), &png_bytes).unwrap();
+
+        // Create a root-level md file referencing the workspace asset
+        let md_content = "# Root\n\n![root](assets/root-img.png)\n";
+        fs::write(ws.join("root-page.md"), md_content).unwrap();
+
+        let result = export_pdf_file_html(&ws, "root-page.md", None, None);
+        assert!(result.is_ok(), "export failed: {:?}", result);
+
+        let html = result.unwrap();
+        assert!(
+            html.contains("data:image/png;base64,"),
+            "workspace root image should be embedded as data URI, got: {}",
+            html
+        );
+    }
+
+    #[test]
+    fn embed_svg_converts_to_png_data_uri() {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("ws");
+        setup_test_workspace(&ws);
+
+        // Create a valid SVG file
+        let assets_dir = ws.join("01-intro").join("assets");
+        fs::create_dir_all(&assets_dir).unwrap();
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect x="10" y="10" width="80" height="80" fill="red"/></svg>"#;
+        fs::write(assets_dir.join("diagram.svg"), svg).unwrap();
+
+        let md_content = "# Test\n\n![diagram](./assets/diagram.svg)\n";
+        fs::write(ws.join("01-intro").join("svg-test.md"), md_content).unwrap();
+
+        let result = export_pdf_file_html(&ws, "01-intro/svg-test.md", None, None);
+        assert!(result.is_ok(), "export failed: {:?}", result);
+
+        let html = result.unwrap();
+        // SVG should be converted to PNG data URI for reliable print rendering
+        assert!(
+            html.contains("data:image/png;base64,"),
+            "SVG should be converted to PNG data URI, got: {}",
+            html
+        );
+        assert!(
+            !html.contains("src=\"./assets/diagram.svg\""),
+            "SVG path should be replaced with PNG data URI"
+        );
     }
 
     // ── rewrite_asset_urls ─────────────────────────────────────

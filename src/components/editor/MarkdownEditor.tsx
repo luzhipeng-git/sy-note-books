@@ -304,17 +304,24 @@ export function MarkdownEditor({ filePath, content }: MarkdownEditorProps) {
     };
     containerRef.current.addEventListener('keydown', handleKeyDown);
 
-    // Double-click image to edit in whiteboard
-    const handleDblClick = async (e: MouseEvent) => {
+    // Click drawnix image to re-edit in whiteboard.
+    // Must use 'click' (not 'dblclick') because Vditor's IR mode intercepts
+    // the first click to show an image preview overlay (black backdrop).
+    // That overlay blocks the second click, so dblclick never fires.
+    // We use capture phase to intercept before Vditor's handler.
+    const handleImageClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       const img = target.closest('img');
       if (!img) return;
 
-      // Use data-local-src (original relative path) if available,
-      // because rewriteImageUrls may have changed src to a Tauri asset URL
+      // Check if this is a drawnix image
       const src = img.getAttribute('data-local-src') ?? img.getAttribute('src') ?? '';
       const parsed = parseImagePath(src);
-      if (!parsed) return;
+      if (!parsed) return; // Not a drawnix image — let Vditor handle normally
+
+      // Prevent Vditor's image preview overlay
+      e.stopPropagation();
+      e.preventDefault();
 
       const docPath = currentFilePathRef.current.replace(/\\/g, '/');
       const pathParts = docPath.split('/');
@@ -322,20 +329,24 @@ export function MarkdownEditor({ filePath, content }: MarkdownEditorProps) {
       const drawnixPath = `${chapterDir}/assets/${parsed.docName}-img-${String(parsed.index).padStart(3, '0')}.drawnix`;
 
       const wsRoot = useWorkspaceStore.getState().rootPath || '/mock/workspace';
-      const data = await loadDrawnix(`${wsRoot}/${drawnixPath}`);
-      if (!data) return;
 
-      const vditor = vditorRef.current;
-      const anchor: WhiteboardAnchor = {
-        sourceFilePath: currentFilePathRef.current,
-        cursorPosition: 1,
-        nearestHeading: getNearestHeading(vditor!),
-      };
+      // Load drawnix data and enter edit mode asynchronously
+      (async () => {
+        const data = await loadDrawnix(`${wsRoot}/${drawnixPath}`);
+        if (!data) return;
 
-      useWhiteboardStore.getState().initEdit(anchor, drawnixPath, data.elements);
-      useWorkspaceStore.getState().enterWhiteboard(anchor);
+        const vditor = vditorRef.current;
+        const anchor: WhiteboardAnchor = {
+          sourceFilePath: currentFilePathRef.current,
+          cursorPosition: 1,
+          nearestHeading: getNearestHeading(vditor!),
+        };
+
+        useWhiteboardStore.getState().initEdit(anchor, drawnixPath, data.elements);
+        useWorkspaceStore.getState().enterWhiteboard(anchor);
+      })();
     };
-    containerRef.current.addEventListener('dblclick', handleDblClick);
+    containerRef.current.addEventListener('click', handleImageClick, true);
 
     // Reposition language hint dropdown
     const hintObserver = new MutationObserver(() => {
@@ -384,7 +395,7 @@ export function MarkdownEditor({ filePath, content }: MarkdownEditorProps) {
       imgObserver.disconnect();
       document.removeEventListener('selectionchange', handleSelectionChange);
       containerRef.current?.removeEventListener('keydown', handleKeyDown);
-      containerRef.current?.removeEventListener('dblclick', handleDblClick);
+      containerRef.current?.removeEventListener('click', handleImageClick, true);
       useEditorStore.getState().setInsertTable(null);
       useEditorStore.getState().setVditorAction(null);
     };
