@@ -6,7 +6,7 @@ import { pickDirectory } from '../../services/dialogService';
 
 export function EmptyState() {
   const { openWorkspace, createWorkspace } = useWorkspaceStore();
-  const { recentWorkspaces } = useSettingsStore();
+  const { recentWorkspaces, removeRecentWorkspace } = useSettingsStore();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
 
   const handleCreateSubmit = (path: string, title: string, author: string) => {
@@ -48,24 +48,34 @@ export function EmptyState() {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' }}>
             {recentWorkspaces.map((item) => (
-              <button
-                key={item.path}
-                className="btn btn-ghost"
-                style={{ justifyContent: 'flex-start', width: '100%' }}
-                onClick={() => openWorkspace(item.path)}
-              >
-                <span style={{ fontSize: 14 }}>📂</span>
-                <span>{item.title}</span>
-                <span
-                  style={{
-                    marginLeft: 'auto',
-                    fontSize: 'var(--text-xs)',
-                    color: 'var(--main-text-secondary)',
-                  }}
+              <div key={item.path} style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-1)' }}>
+                <button
+                  className="btn btn-ghost"
+                  style={{ justifyContent: 'flex-start', width: '100%', flex: 1, minWidth: 0 }}
+                  onClick={() => openWorkspace(item.path)}
                 >
-                  {item.path}
-                </span>
-              </button>
+                  <span style={{ fontSize: 14 }}>📂</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title}</span>
+                  <span
+                    style={{
+                      marginLeft: 'auto',
+                      fontSize: 'var(--text-xs)',
+                      color: 'var(--main-text-secondary)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {item.path}
+                  </span>
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  style={{ padding: '2px 6px', fontSize: 'var(--text-xs)', color: 'var(--main-text-secondary)', flexShrink: 0 }}
+                  title="移除此记录"
+                  onClick={(e) => { e.stopPropagation(); removeRecentWorkspace(item.path); }}
+                >
+                  ✕
+                </button>
+              </div>
             ))}
           </div>
         </div>
