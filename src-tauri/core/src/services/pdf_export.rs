@@ -47,7 +47,7 @@ pub fn export_file_as_pdf(
 
     // Load raw font data
     let regular_data = load_cjk_font().map_err(|e| format!("加载字体失败：{e}"))?;
-    let mono_data = load_mono_font();
+    let mono_data = load_mono_font().map_err(|e| format!("加载等宽字体失败：{e}"))?;
 
     // Create document with default font family
     let mut doc = Document::new(regular_data.clone());
@@ -423,9 +423,20 @@ const CJK_FONT_PATHS: &[(&str, &str)] = &[
      "/System/Library/Fonts/STHeiti Medium.ttc"),
     ("/Library/Fonts/Arial Unicode.ttf",
      "/Library/Fonts/Arial Unicode.ttf"),
-    // Windows
+    // Windows — 桌面版 Win10/11 默认都有，按通用性排序
+    //   msyh = 微软雅黑 (Vista+)，msjh = 微软简黑，
+    //   simsun = 宋体 (最通用，Win95+)，simhei = 黑体
+    //   注意：Windows Server（如 CI runner）默认不带这些字体
     ("C:\\Windows\\Fonts\\msyh.ttc",
      "C:\\Windows\\Fonts\\msyhbd.ttc"),
+    ("C:\\Windows\\Fonts\\msyh.ttf",
+     "C:\\Windows\\Fonts\\msyhbd.ttf"),
+    ("C:\\Windows\\Fonts\\simsun.ttc",
+     "C:\\Windows\\Fonts\\simsun.ttc"),
+    ("C:\\Windows\\Fonts\\simhei.ttf",
+     "C:\\Windows\\Fonts\\simhei.ttf"),
+    ("C:\\Windows\\Fonts\\msjh.ttc",
+     "C:\\Windows\\Fonts\\msjhbd.ttc"),
 ];
 
 const MONO_FONT_PATHS: &[&str] = &[
@@ -436,7 +447,18 @@ const MONO_FONT_PATHS: &[&str] = &[
     "C:\\Windows\\Fonts\\consola.ttf",
 ];
 
+/// Bundled fallback CJK font path (relative to this crate's Cargo.toml dir).
+///
+/// `CARGO_MANIFEST_DIR` is a compile-time absolute path, so this resolves to
+/// `src-tauri/core/assets/NotoSansSC-Regular.ttf` regardless of the current
+/// working directory. Used only when no system CJK font is found (e.g. CI
+/// runners, minimal Linux). Not bundled into app installers (see
+/// tauri.conf.json) — at runtime the user's system font is preferred.
+const BUNDLED_CJK_FONT: &str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/assets/NotoSansSC-Regular.ttf");
+
 fn load_cjk_font() -> Result<FontFamily<FontData>, String> {
+    // 1) Prefer system CJK fonts (higher quality, proper weights)
     for (regular_path, bold_path) in CJK_FONT_PATHS {
         if Path::new(regular_path).exists() {
             if let Ok(font) = load_font_family(regular_path, bold_path) {
@@ -444,10 +466,14 @@ fn load_cjk_font() -> Result<FontFamily<FontData>, String> {
             }
         }
     }
+    // 2) Bundled fallback (NotoSansSC subset, Regular only; bold reuses regular)
+    if Path::new(BUNDLED_CJK_FONT).exists() {
+        return load_font_family(BUNDLED_CJK_FONT, BUNDLED_CJK_FONT);
+    }
     Err("未找到可用的中文字体。请安装 NotoSansCJK 或 DroidSansFallbackFull 字体。".to_string())
 }
 
-fn load_mono_font() -> FontFamily<FontData> {
+fn load_mono_font() -> Result<FontFamily<FontData>, String> {
     for path in MONO_FONT_PATHS {
         if Path::new(path).exists() {
             if let Ok(data) = load_single_font(path) {
@@ -461,11 +487,11 @@ fn load_mono_font() -> FontFamily<FontData> {
                 };
                 let italic = data.clone();
                 let bold_italic = bold.clone();
-                return FontFamily { regular: data, bold, italic, bold_italic };
+                return Ok(FontFamily { regular: data, bold, italic, bold_italic });
             }
         }
     }
-    // Last resort
+    // Last resort: DejaVuSans (proportional) as a mono stand-in
     load_single_font("/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf")
         .map(|data| FontFamily {
             regular: data.clone(),
@@ -473,7 +499,9 @@ fn load_mono_font() -> FontFamily<FontData> {
             italic: data.clone(),
             bold_italic: data,
         })
-        .unwrap_or_else(|_| panic!("无法加载任何字体"))
+        .map_err(|_| {
+            "未找到可用的等宽字体。请安装 DejaVuSansMono 或 LiberationMono 字体。".to_string()
+        })
 }
 
 fn load_font_family(regular_path: &str, bold_path: &str) -> Result<FontFamily<FontData>, String> {

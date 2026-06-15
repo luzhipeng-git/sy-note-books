@@ -339,6 +339,18 @@ PDF 导出使用 `genpdf-chinese`（vendored 在 `src-tauri/vendor/genpdf-chines
 
 **效果**：NotoSansCJK（CFF）现可作主字体，DroidSans 降级为无 NotoSansCJK 时的兜底。`CJK_FONT_PATHS` 顺序不变（NotoSansCJK 在前，DroidSans 在后），只是现在 NotoSansCJK 真正生效了。
 
+### 0.1 兜底字体：bundled NotoSansSC（CI / 无系统字体环境）
+
+CI runner（Windows Server、精简 Linux）默认不带任何 CJK 字体，导致 PDF 导出测试全部失败。为此仓库内捆绑了一份 NotoSansSC Regular（`src-tauri/core/assets/NotoSansSC-Regular.ttf`，~11MB，OFL 许可，`LICENSE` 同目录）。
+
+- **加载优先级**：`load_cjk_font` 先遍历 `CJK_FONT_PATHS`（系统字体，质量更高、有字重），全部未命中时退到 `BUNDLED_CJK_FONT`（`concat!(env!("CARGO_MANIFEST_DIR"), "/assets/NotoSansSC-Regular.ttf")`）。
+- **不进安装包**：`tauri.conf.json` 的 `bundle.resources` 只含 `binaries/hhc/*`，无 `include_bytes!`，字体仅作仓库文件存在（CI/本地测试用），不增大 `.exe`/`.dmg`/`.AppImage`。
+- **生产运行时**：用户系统装了字体就用系统字体（优先），bundled 仅在极少数无字体环境兜底。
+- **Bold 处理**：bundled 只含 Regular，`load_font_family` 在 bold 文件不存在时自动用 regular 顶替（粗体字重略弱，测试只验证 PDF 有效性，不影响）。
+- `load_mono_font` 同样改为返回 `Result`（原先无字体会 `panic!`，现返回 Err），等宽字体在所有主流 OS 都有系统字体（Linux DejaVuMono / macOS Menlo / Windows consola），无需 bundled。
+
+Windows 桌面用户字体补充：`CJK_FONT_PATHS` Windows 段覆盖 `msyh`(微软雅黑) / `simsun`(宋体) / `simhei`(黑体) / `msjh`(微软简黑)，按通用性排序。注意 Windows Server（CI runner）默认不带这些字体。
+
 ### 1. `genpdf-chinese` 在 Rust 1.96+ 编译失败（coherence 冲突）
 
 **现象**：`genpdf-chinese 0.2.9`（已停止维护，唯一版本）在 Rust 1.96+ 报 `E0119: conflicting implementations`，与 `time` crate 的 `From` impl 冲突。CI 用 `dtolnay/rust-toolchain@stable`（即 1.96+），会直接 break。
