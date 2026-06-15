@@ -11,5 +11,7 @@ src-tauri/target/
 __pycache__/
 .vite/
 src-tauri/binaries/synote-export-*
-cicd/git-access-tokene2e-tests/reports/
+cicd/git-access-token
+e2e-tests/reports/
+e2e-tests/screenshots/
 .docker-deps-hash

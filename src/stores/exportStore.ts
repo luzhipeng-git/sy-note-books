@@ -101,19 +101,25 @@ export const useExportStore = create<ExportState>()((set, get) => ({
         return;
       }
 
-      // Show save dialog to let user choose output location
-      const fileName = activeFilePath.split('/').pop()?.replace(/\.md$/, '.pdf') ?? 'output.pdf';
-      const { savePdfFile } = await import('../services/dialogService');
-      const outputPath = await savePdfFile(fileName);
-      if (!outputPath) return; // User cancelled
-
       set({ step: 'progress', progress: 30, progressText: '生成 PDF...', progressDetail: '' });
       try {
+        // Generate PDF to dist/pdf-vN (same version management as CHM/nginx)
+        const distPath = await invokeIPC<string>('prepare_export_output', {
+          workspacePath,
+          exportType: 'pdf',
+        });
+        const fileName = activeFilePath.split('/').pop()?.replace(/\.md$/, '.pdf') ?? 'output.pdf';
+        const outputPath = `${distPath}/${fileName}`;
+
         const { exportPdfViaNative } = await import('../services/exportService');
         const result = await exportPdfViaNative(
           workspacePath, activeFilePath, outputPath,
           titleOverride || undefined, authorOverride || undefined,
         );
+
+        // Prune old PDF versions (keep last 3, same as CHM/nginx)
+        await invokeIPC('prune_export_versions', { workspacePath, exportType: 'pdf' }).catch(() => {});
+
         set({ step: 'success', outputPath: result });
       } catch (e) {
         set({ step: 'error', errorMessage: e instanceof Error ? e.message : String(e) });

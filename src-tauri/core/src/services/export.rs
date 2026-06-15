@@ -88,7 +88,6 @@ pub fn export_chm(
     fs::create_dir_all(output_dir).map_err(|e| format!("创建输出目录失败：{e}"))?;
 
     let pages = collect_pages(&filtered);
-    let mut file_list: Vec<String> = Vec::new();
 
     // Generate HTML for each page (no sidebar — CHM has its own navigation)
     for (title, md_rel_path) in &pages {
@@ -106,8 +105,21 @@ pub fn export_chm(
 
         let page_html = chm_page_html(title, &html_content);
         write_file_with_dirs(&html_abs, &page_html)?;
-        file_list.push(html_rel.replace('\\', "/"));
     }
+
+    // Copy assets FIRST (before generating .hhp, so asset files appear in [FILES])
+    copy_all_assets(workspace_path, output_dir, &pages)?;
+
+    // Convert SVG assets to PNG (CHM's IE engine doesn't support SVG)
+    let svg_count = convert_svg_assets_to_png(output_dir).unwrap_or(0);
+    if svg_count > 0 {
+        eprintln!("[export] Converted {svg_count} SVG files to PNG for CHM compatibility");
+    }
+
+    // Scan ALL files in output_dir (HTML + assets) for the .hhp [FILES] section.
+    // chmcmd only packs files listed in [FILES] — missing entries = missing in .chm.
+    let all_files = scan_all_files(output_dir, output_dir);
+    let file_list: Vec<String> = all_files.into_iter().collect();
 
     // Determine default topic (first page)
     let default_topic = pages
@@ -130,15 +142,6 @@ pub fn export_chm(
     let (hhc_gbk, _, _) = GBK.encode(&hhc);
     fs::write(output_dir.join("contents.hhc"), hhc_gbk.as_ref())
         .map_err(|e| format!("写入 contents.hhc 失败：{e}"))?;
-
-    // Copy assets
-    copy_all_assets(workspace_path, output_dir, &pages)?;
-
-    // Convert SVG assets to PNG (CHM's IE engine doesn't support SVG)
-    let svg_count = convert_svg_assets_to_png(output_dir).unwrap_or(0);
-    if svg_count > 0 {
-        eprintln!("[export] Converted {svg_count} SVG files to PNG for CHM compatibility");
-    }
 
     // Try to compile .chm using chmcmd (Free Pascal CHM compiler)
     let chm_result = compile_chm(output_dir, chmcmd_path);
@@ -1328,6 +1331,31 @@ fn replace_svg_with_png(html: &str) -> String {
         }
     }
     result
+}
+
+/// Recursively scan a directory and return all file paths relative to `base`.
+/// Used to build the complete file list for CHM's .hhp [FILES] section.
+fn scan_all_files(base: &Path, current: &Path) -> Vec<String> {
+    let mut results = Vec::new();
+    let Ok(entries) = fs::read_dir(current) else {
+        return results;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            results.extend(scan_all_files(base, &path));
+        } else if path.is_file() {
+            if let Ok(rel) = path.strip_prefix(base) {
+                // Skip project metadata files — they're not content
+                let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                if name == "project.hhp" || name == "contents.hhc" || name == "output.chm" {
+                    continue;
+                }
+                results.push(rel.to_string_lossy().replace('\\', "/"));
+            }
+        }
+    }
+    results
 }
 
 // ═══════════════════════════════════════════════════════════════

@@ -94,9 +94,6 @@ RUN pnpm config set minimum-release-age 0 --location=global \
 COPY src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/
 COPY src-tauri/build.rs src-tauri/
 COPY src-tauri/core/Cargo.toml src-tauri/core/
-# Copy vendored crates (e.g. genpdf-chinese) referenced by [patch.crates-io].
-# Without this, cargo fetch fails resolving the patched dependency.
-COPY src-tauri/vendor src-tauri/vendor
 
 # Create dummy source files so cargo can resolve the workspace
 RUN mkdir -p src-tauri/src \

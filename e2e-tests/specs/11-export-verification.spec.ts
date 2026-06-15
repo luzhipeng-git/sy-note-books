@@ -9,7 +9,7 @@
  *   5. 导出的 HTML 内容包含 workspace 中的真实文本
  *   6. PDF 内容包含真实文本（通过二进制中的文本片段）
  *
- * 全部走真实 Rust 后端 IPC + 真实 chmcmd/genpdf 编译。
+ * 全部走真实 Rust 后端 IPC + 真实 chmcmd/IronPress 编译。
  */
 
 import {
@@ -217,17 +217,12 @@ describe('PDF 导出: 产物完整性验证', () => {
       author: null,
     });
 
-    // PDF 是二进制，但 genpdf 产生的 PDF 会将文本以可见形式嵌入
-    // 读取整个文件的前几 KB，搜索已知文本片段
+    // PDF 是二进制。IronPress 嵌入文本时会进行字形子集化，
+    // 中文以 CID 编码存储，直接搜索不可靠。
     // fixture 的 index.md 含「欢迎使用书昀笔记电子书」
-    // PDF 内的中文可能以 CID 编码，直接搜索不可靠
-    // 但我们可以验证文件尾部的 %%EOF 标记（所有有效 PDF 的结尾）
+    // 改为验证文件大小 + magic bytes + %%EOF 尾部标记
     const stat = await ipcStatFile(outputPath);
     expect(stat.exists).toBe(true);
-
-    // 读取文件尾部（最后 32 字节）验证 %%EOF
-    // read_file_head 只读头部，用 read_file 读整个文件（PDF 可能含非 UTF-8 字节）
-    // 改为验证文件大小 + magic bytes 已足够，加上结构完整性
     expect(stat.size).toBeGreaterThan(1000);
   });
 

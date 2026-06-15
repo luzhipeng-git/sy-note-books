@@ -10,6 +10,8 @@
 - Vditor（IR 模式）Markdown 编辑器
 - Drawnix 白板画图
 - MiniSearch 7.x 全文搜索
+- IronPress 1.4 — 纯 Rust HTML/CSS→PDF 转换（内置布局引擎，无浏览器依赖）
+- chmcmd（Free Pascal）— CHM 编译器
 - Node.js v25.9.0
 
 ## 开发环境
@@ -69,7 +71,7 @@ src-tauri/              ← Rust 后端（Cargo workspace）
 │   ├── lib.rs          ← Tauri command 注册
 │   └── main.rs         ← 入口
 ├── Cargo.toml          ← workspace 根（依赖 Tauri）
-└── core/Cargo.toml     ← core crate（仅依赖 serde，本机可编译）
+└── core/Cargo.toml     ← core crate（业务逻辑：pulldown-cmark, resvg, ironpress 等，不依赖 Tauri）
 
 design/                 ← 全局设计产出物（开发前一次性完成）
 ├── design-system.md    ← 静态设计系统（配色/字体/间距/组件风格）
@@ -94,16 +96,18 @@ design/                 ← 全局设计产出物（开发前一次性完成）
 e2e-tests/              ← E2E 测试（WebDriverIO + tauri-driver）
 ├── wdio.conf.ts        ← WebDriverIO 配置
 ├── helpers/            ← 选择器、操作、夹具
-└── specs/              ← 9 个功能域的测试用例
+└── specs/              ← 11 个功能域的测试用例
     ├── 01-welcome      ← 欢迎页 UI
     ├── 02-sidebar      ← 侧边栏交互
     ├── 03-file-tree    ← 文件树 CRUD
     ├── 04-whiteboard   ← 白板画图
-    ├── 05-search       ← 全局搜索
+    ├── 05-search       ← 全文搜索
     ├── 06-export       ← 导出
     ├── 07-ipc          ← IPC 直连（真实 Rust 后端）
     ├── 08-integration  ← 跨功能联动
-    └── 09-performance  ← 性能基准
+    ├── 09-performance  ← 性能基准
+    ├── 10-bugfixes     ← 回归测试（14 个 bug 修复验证）
+    └── 11-export-verification ← 导出产物二进制严格验证（CHM ITSF 魔数、PDF %PDF-/%%EOF）
 
 scripts/                ← 构建和测试脚本
 └── e2e-docker.sh       ← Docker 内运行 E2E 测试（含智能重建 + 缓存卷）
@@ -170,7 +174,7 @@ pnpm docker:test
 - **WebDriverIO + tauri-driver** 跑关键用户流程（非 Playwright）
 - 需 Tauri 运行时（Docker Fedora 容器内执行）
 - IPC 走真实 Rust 后端，非 mock
-- 测试套件在 `e2e-tests/` 目录，9 个 spec 文件，173 个测试用例
+- 测试套件在 `e2e-tests/` 目录，11 个 spec 文件，212 个测试用例
 - 运行命令：`pnpm test:e2e`（智能构建镜像 + 编译 Tauri + 运行测试）
 
 **E2E 测试分层结构：**
@@ -185,7 +189,7 @@ pnpm docker:test
 | 镜像 | 大小 | 内容 | 重建时机 |
 |------|------|------|----------|
 | `synote-tauri:base` | 3.12GB | Fedora 41 + 系统包 + Rust + Node + pnpm + tauri-driver + WebKitWebDriver | 系统包/Rust/Node 版本变更 |
-| `synote-tauri:deps` | 4.59GB | base + 预热 pnpm store + cargo registry | package.json/Cargo.toml/patches 变更 |
+| `synote-tauri:deps` | 4.59GB | base + 预热 pnpm store + cargo registry | package.json/Cargo.toml 变更 |
 
 **缓存加速机制：**
 
@@ -203,7 +207,7 @@ pnpm docker:test
 | `synote-pnpm-store` | `/root/.local/share/pnpm/store` | pnpm 包缓存（硬链接，免下载） |
 | `synote-cargo-target` | `/opt/cargo-target` | Rust 编译产物（增量编译） |
 
-**智能重建：** `e2e-docker.sh` 自动对比 `package.json`/`pnpm-lock.yaml`/`Cargo.toml`/`patches/` 的 hash，仅在依赖变更时重建 deps 镜像，源码变更不触发重建。
+**智能重建：** `e2e-docker.sh` 自动对比 `package.json`/`pnpm-lock.yaml`/`Cargo.toml` 的 hash，仅在依赖变更时重建 deps 镜像，源码变更不触发重建。
 
 **Rust 代码组织原则：**
 - 所有业务逻辑（解析、校验、计算、文件操作）放 `src-tauri/core/` crate，**禁止依赖 Tauri**
@@ -323,59 +327,47 @@ optimizeDeps: {
 2. **`useEffect` 注册事件阻断**：parent `useEffect` 在 child `useEffect` 之后执行，无法在 Board 设置 WeakMap 之前拦截事件。必须用 `useLayoutEffect`
 3. **`useState` 标记 ready 状态**：`useState` 更新是异步的，阻断器无法同步读取 ready 值。必须用 `useRef`
 
-## PDF 导出：跨平台字体加载踩坑总结
+## PDF 导出：IronPress（纯 Rust HTML/CSS→PDF）
 
-PDF 导出使用 `genpdf-chinese`（vendored 在 `src-tauri/vendor/genpdf-chinese/`），底层字体引擎已从 `rusttype 0.8` **换成 `ab_glyph`**（同 rusttype 作者的重写版，支持 TrueType + CFF 双轮廓）。跨 OS（Fedora/RHEL/macOS/Windows）+ 跨 Rust 版本测试时踩过的坑，全部通过 Docker 提前发现（避免污染 GitHub CI）。
+PDF 导出使用 [IronPress](https://crates.io/crates/ironpress)（`ironpress = "1.4"`），一个纯 Rust 的 HTML/CSS/Markdown→PDF 转换器，内置 CSS 布局引擎（flexbox、grid、`@page`、`@font-face`），无浏览器依赖。
 
-### 0. 字体引擎：rusttype → ab_glyph（当前实现）
+### 架构
 
-`genpdf-chinese` 原本基于 `rusttype 0.8`，它只能解析 TrueType 轮廓（`glyf` 表），遇到 CFF 轮廓（`CFF ` 表）直接判定 ill-formed——而 Linux 上最常见的高质量 CJK 字体 NotoSansCJK 恰好是 CFF。历史上只能退而用 `DroidSansFallbackFull.ttf`（TrueType，字形粗糙、无字重）当主字体。
+```
+Markdown → pulldown-cmark → HTML
+                             ↓
+              embed_images_as_data_uri（图片嵌入为 data URI）
+                             ↓
+              完整 HTML（含 <style>PDF_CSS</style>）
+                             ↓
+              IronPress HtmlConverter::convert()
+                             ↓
+                        PDF 字节流
+```
 
-**当前方案**：vendored 的 `genpdf-chinese` 已把字体层换成 `ab_glyph`：
-- `ab_glyph::{Font as _, FontArc}` 替换所有 `rusttype` API（`fonts.rs` 是改动核心，`error.rs` 把 `rusttype::Error` 换成 `ab_glyph::InvalidFont`）。
-- **`Font as _` 是关键**：本模块已有自己的 `pub struct Font`（缓存的字体引用），直接 `use ab_glyph::Font` 会与本模块的 `Font` 结构体命名冲突（导致上百个编译错误）。`as _` 只把 trait 方法引入作用域，不绑定名字。
-- `FontVec::try_from_vec_and_index(data, 0)` 原生支持多字体 TTC（取首个字体）+ CFF 轮廓。`FontArc` 无此构造函数，所以用 `parse_font` helper 先建 `FontVec` 再包 `FontArc`（`FontArc` 才是 `Clone`，满足 `FontData` 的 `#[derive(Clone)]` 和 subset clone 路径）。
-- **度量换算坑**：rusttype 的 `.scaled(Scale::uniform(glyph_height)).h_metrics().advance_width` 返回 `unscaled * glyph_height / units_per_em`，而 ab_glyph 的 `h_advance_unscaled()` 返回纯字体单位值。`Font::new` 里的 `scale` 字段必须存 `glyph_height / units_per_em`（不是 `glyph_height` 本身），否则字符宽度偏大 `units_per_em` 倍，直接 `Page overflowed while trying to wrap a string`。同样的 `* scale` 也用于 `kern_unscaled` 和 `h_side_bearing_unscaled`。
+- **入口**：`core/src/services/pdf_export.rs` → `export_file_as_pdf()`，调用 `export::export_pdf_file_html()` 生成 HTML，再用 IronPress 的 `HtmlConverter` 渲染。
+- **CJK 字体**：IronPress 内部用 `fontdb` 自动发现系统字体，`rustybuzz`（HarfBuzz）做字形整形，`subsetter` 做子集嵌入。**无需手动注册字体**——装了系统 CJK 字体即可。
+- **图片**：所有图片在 HTML 阶段已被 `embed_images_as_data_uri` 转为 base64 data URI，IronPress 直接渲染 PNG/JPEG。SVG 也由 resvg 转 PNG 后嵌入。
+- **sanitize(false)**：HTML 由我们自己的 `md_to_html` 生成，可信，关闭 IronPress 的 HTML 消毒（否则会误删 `<style>` 块）。
 
-**效果**：NotoSansCJK（CFF）现可作主字体，DroidSans 降级为无 NotoSansCJK 时的兜底。`CJK_FONT_PATHS` 顺序不变（NotoSansCJK 在前，DroidSans 在后），只是现在 NotoSansCJK 真正生效了。
+### 为什么不用其他方案
 
-### 0.1 兜底字体：bundled NotoSansSC（CI / 无系统字体环境）
+| 方案 | 否决原因 |
+|------|---------|
+| genpdf-chinese（旧方案）| 已停止维护、无 CSS 引擎、手动元素渲染（800 行）、图片透明转黑、字体加载复杂 |
+| Headless Chromium | 安装包 +150MB |
+| WebView PrintToPdf | wry 0.55 / Tauri 2.11 无公开 API（issue #707 未关闭） |
 
-CI runner（Windows Server、精简 Linux）默认不带任何 CJK 字体，导致 PDF 导出测试全部失败。为此仓库内捆绑了一份 NotoSansSC Regular（`src-tauri/core/assets/NotoSansSC-Regular.ttf`，~11MB，OFL 许可，`LICENSE` 同目录）。
+### Docker 字体包（CI 必装）
 
-- **加载优先级**：`load_cjk_font` 先遍历 `CJK_FONT_PATHS`（系统字体，质量更高、有字重），全部未命中时退到 `BUNDLED_CJK_FONT`（`concat!(env!("CARGO_MANIFEST_DIR"), "/assets/NotoSansSC-Regular.ttf")`）。
-- **不进安装包**：`tauri.conf.json` 的 `bundle.resources` 只含 `binaries/hhc/*`，无 `include_bytes!`，字体仅作仓库文件存在（CI/本地测试用），不增大 `.exe`/`.dmg`/`.AppImage`。
-- **生产运行时**：用户系统装了字体就用系统字体（优先），bundled 仅在极少数无字体环境兜底。
-- **Bold 处理**：bundled 只含 Regular，`load_font_family` 在 bold 文件不存在时自动用 regular 顶替（粗体字重略弱，测试只验证 PDF 有效性，不影响）。
-- `load_mono_font` 同样改为返回 `Result`（原先无字体会 `panic!`，现返回 Err），等宽字体在所有主流 OS 都有系统字体（Linux DejaVuMono / macOS Menlo / Windows consola），无需 bundled。
-
-Windows 桌面用户字体补充：`CJK_FONT_PATHS` Windows 段覆盖 `msyh`(微软雅黑) / `simsun`(宋体) / `simhei`(黑体) / `msjh`(微软简黑)，按通用性排序。注意 Windows Server（CI runner）默认不带这些字体。
-
-### 1. `genpdf-chinese` 在 Rust 1.96+ 编译失败（coherence 冲突）
-
-**现象**：`genpdf-chinese 0.2.9`（已停止维护，唯一版本）在 Rust 1.96+ 报 `E0119: conflicting implementations`，与 `time` crate 的 `From` impl 冲突。CI 用 `dtolnay/rust-toolchain@stable`（即 1.96+），会直接 break。
-
-**根因**：`genpdf-chinese/src/lib.rs` 的 blanket impl `impl<T: Into<Mm>> From<T> for Margins` 过于宽泛，Rust 1.96 改进的 coherence 检查判定它与 `time` crate 冲突。
-
-**修复**：vendoring + patch。`src-tauri/vendor/genpdf-chinese/` 存放 patched 副本，通过 workspace 根 `[patch.crates-io]`（`src-tauri/Cargo.toml`）替换。patch 内容：把 blanket impl 换成具体的 `impl From<Mm>/From<f32>/From<f64> for Margins`。
-
-**关键**：`[patch.crates-io]` 写在 workspace 根 `src-tauri/Cargo.toml`。`cd src-tauri/core && cargo test` 会向上找到 workspace 根，patch 自动生效（`cargo tree` 可验证用的是 vendored 路径）。
-
-### 字体包清单（Docker 必装）
+IronPress 通过 fontdb 发现系统字体，Docker 镜像必须装 CJK 字体：
 
 | 包 | 提供字体 | 用途 |
 |----|---------|------|
-| `google-noto-sans-cjk-fonts` | NotoSansCJK-*.ttc（**CFF，ab_glyph 可解析**）| CJK 主字体（高质量、有字重）|
-| `google-droid-sans-fonts` | DroidSansFallbackFull.ttf（TrueType）| CJK 兜底（无 NotoSansCJK 时，如 Android/精简 Linux）|
+| `google-noto-sans-cjk-fonts` | NotoSansCJK-*.ttc | CJK 主字体 |
+| `google-droid-sans-fonts` | DroidSansFallbackFull.ttf | CJK 兜底 |
 | `dejavu-sans-mono-fonts` | DejaVuSansMono.ttf | 代码块等宽字体 |
 | `liberation-mono-fonts` | LiberationMono-Regular.ttf | mono 备用 |
-
-### 跨平台字体路径差异
-
-`CJK_FONT_PATHS` 必须覆盖各发行版的包名差异（同名字体包，安装路径不同）：
-- Fedora：`/usr/share/fonts/google-noto-sans-cjk-fonts/`
-- RHEL/CentOS：`/usr/share/fonts/google-noto-cjk/`
-- Ubuntu/Debian：`/usr/share/fonts/opentype/noto/`
 
 ## 设计文档
 

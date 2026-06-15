@@ -230,7 +230,10 @@
 
 - 一键导出整个 workspace 为 CHM 文件
 - CHM 包含完整的目录树导航和搜索索引
-- 编译不依赖 hhc.exe，使用纯 Python ITSF 二进制写入
+- 编译使用 chmcmd（Free Pascal CHM 编译器），Windows 上优先使用 Microsoft hhc.exe（GBK 中文支持更好）
+- `.hhp`/`.hhc` 项目文件以 GBK 编码写入（chmcmd 按系统 ANSI 代码页解析）
+- 所有资源文件（HTML + 图片）通过递归扫描纳入 `.hhp [FILES]`，确保图片正确打包进 `.chm`
+- SVG 图片自动转换为 PNG（CHM 的 IE 引擎不支持 SVG）
 - 支持单章节导出为独立 CHM
 
 #### 2.6.2 Nginx 部署包导出
@@ -245,9 +248,23 @@
 #### 2.6.3 单文件 PDF 导出
 
 - 用户可选择当前打开的 Markdown 文件，通过菜单或快捷键触发「导出为 PDF」
-- 采用半自动模式：弹出系统打印对话框，用户可选择「另存为 PDF」
-- PDF 样式与编辑器中看到的渲染效果一致
-- 用户可在打印对话框中调整纸张大小、边距、方向等参数
+- **纯 Rust 生成**，使用 IronPress（`ironpress` crate）将 HTML/CSS 直接渲染为 PDF，无浏览器依赖、无打印对话框
+- 生成流程：Markdown → pulldown-cmark → HTML → 嵌入图片为 data URI → IronPress 布局引擎渲染 → PDF 字节流
+- IronPress 内置 CSS 布局引擎（flexbox、grid、`@page`、`@font-face`），PDF 样式由 CSS 控制，与编辑器渲染效果一致
+- CJK 文字通过 HarfBuzz（rustybuzz）整形 + Unicode 字体自动回退渲染，使用系统已安装的中文字体，无需捆绑字体
+- 图片（PNG/JPEG/SVG）在 HTML 阶段全部嵌入为 base64 data URI；SVG 先经 resvg 转 PNG 再嵌入
+- 输出到 `dist/pdf-vN/` 版本目录（与 CHM/Nginx 统一管理），不弹出保存对话框
+- 支持标题覆盖（用户可在导出对话框中自定义 PDF 标题）
+
+**技术选型决策：**
+
+| 方案 | 否决原因 |
+|------|---------|
+| ~~WebView PrintToPdf~~ | Tauri 2.x / wry 0.55 桌面端无公开 `print_to_pdf` API（wry issue #707 未关闭），需手写每平台 COM/WKWebView/WebKitGTK 绑定，维护成本极高 |
+| ~~Headless Chromium~~ | 安装包体积 +150MB，不可接受 |
+| ~~genpdf-chinese~~ | 已停止维护、无 CSS 引擎、手动元素渲染 800 行代码、图片透明像素转黑底、字体加载逻辑复杂 |
+
+IronPress（纯 Rust、内置 CSS 布局引擎、HarfBuzz CJK 支持、MIT、2200+ 测试）是当前最优方案。
 
 #### 2.6.4 导出配置
 
@@ -262,68 +279,53 @@
 
 #### 2.7.1 文件存储位置
 
-导出产生的临时文件和最终产物统一存放在 app 安装目录下：
+导出最终产物存放在 workspace 目录下的 `dist/` 子目录，按导出类型各自保留最近 3 个版本：
 
 ```
-selfnote/                              ← app 安装目录
-├── temp/                              ← 导出中间临时文件
-│   ├── my-docs-a1b2c3/               ← workspace 名称 + 短 hash
-│   │   ├── chm/                      ← CHM 中间文件（HTML、.hhp 等）
-│   │   └── nginx/                    ← Nginx 中间文件
-│   └── project-x-e5f6g7h/
-│       └── ...
+my-workspace/                          ← workspace 根目录
+├── SUMMARY.md
+├── workspace.json
+├── 01-getting-started/
+├── 02-architecture/
 │
-├── dist/                              ← 导出最终产物（按类型各自保留最近 3 个版本）
-│   ├── my-docs-a1b2c3/
-│   │   ├── chm-v1/                   ← CHM 第 1 版（最早）
-│   │   │   └── output.chm
-│   │   ├── chm-v2/                   ← CHM 第 2 版
-│   │   │   └── output.chm
-│   │   ├── chm-v3/                   ← CHM 第 3 版（最新，下次导出 chm-v4 时 v1 被删）
-│   │   │   └── output.chm
-│   │   ├── nginx-v1/                 ← Nginx 第 1 版
-│   │   │   └── (nginx 部署包文件)
-│   │   └── nginx-v2/                 ← Nginx 第 2 版（最新）
-│   │       └── (nginx 部署包文件)
-│   └── project-x-e5f6g7h/
-│       └── ...
-│
-└── vendor/                            ← 共享依赖缓存（docsify/prism）
-    ├── docsify@4/
-    └── prism@1/
+└── dist/                              ← 导出最终产物（按类型各自保留最近 3 个版本）
+    ├── chm-v1/                        ← CHM 第 1 版（最早）
+    │   └── output.chm
+    ├── chm-v2/                        ← CHM 第 2 版
+    │   └── output.chm
+    ├── chm-v3/                        ← CHM 第 3 版（最新，下次导出 chm-v4 时 v1 被删）
+    │   └── output.chm
+    ├── nginx-v1/                      ← Nginx 第 1 版
+    │   └── (nginx 部署包文件)
+    ├── nginx-v2/                      ← Nginx 第 2 版（最新）
+    │   └── (nginx 部署包文件)
+    ├── pdf-v1/                        ← PDF 第 1 版
+    │   └── 入门指南.pdf
+    └── pdf-v2/                        ← PDF 第 2 版（最新）
+        └── 入门指南.pdf
 ```
 
 **设计要点：**
 
-- 每个 workspace 在 `temp/` 和 `dist/` 下有独立文件夹，互不冲突
-- 文件夹命名规则：`{workspace名称}-{路径短hash}`，兼顾可读性和唯一性
-- **版本按导出类型独立管理** — CHM、Nginx 各自维护版本号，互不影响
-  - 新导出 `chm-v4` → 删除 `chm-v1`，nginx 版本不受影响
-  - 新导出 `nginx-v3` → 删除 `nginx-v1`，chm 版本不受影响
-- 每种类型保留最近 3 个版本，超出则删除最早的
-- 导出完成后弹出保存对话框，用户选择目标路径，app 将产物复制过去
+- `dist/` 位于 workspace 目录下，每个 workspace 独立管理导出版本，互不冲突
+- **版本按导出类型独立管理** — CHM、Nginx、PDF 各自维护版本号，互不影响
+  - 新导出 `chm-v4` → 删除 `chm-v1`，nginx/pdf 版本不受影响
+  - 新导出 `pdf-v3` → 删除 `pdf-v1`，chm/nginx 版本不受影响
+- 每种类型保留最近 3 个版本，超出则删除最早的（`prune_export_versions` IPC）
+- PDF 文件名取自源 Markdown 文件名（如 `index.md` → `index.pdf`）
+- 导出完成后可在 UI 中点击「另存为」将产物复制到用户指定路径（`copy_export_output` IPC）
 
 #### 2.7.2 临时文件清理
 
-采用三层清理机制：
+采用版本滚动机制：
 
-**第 1 层 — 导出开始前预清理：**
+**导出时的版本管理：**
 
-- 删除该 workspace 的 `temp/{workspace}/` 目录（清除上次残留）
-- 避免新旧中间文件混杂
-
-**第 2 层 — 导出完成后立即清理：**
-
-- 导出成功 → 删除 `temp/{workspace}/` 全部内容
-- 导出失败 → 保留 `temp/{workspace}/`（供排查问题），下次导出时由第 1 层清理
-
-**第 3 层 — 应用启动时兜底清理：**
-
-- 扫描 `temp/` 下所有 workspace 目录
-- 删除创建时间超过 24 小时的目录
-- 扫描 `dist/` 下所有 workspace 目录
-- 按导出类型（chm / nginx）独立管理版本，每种类型只保留最近 3 个版本
+- 导出前：`prepare_export_output` 计算下一个版本号（`dist/{type}-v{N}`），创建目录
+- 导出成功后：`prune_export_versions` 扫描同类型版本目录，删除超出保留数量的旧版本
+- 导出失败：不执行 prune，已有版本不受影响（失败不会删掉好的版本）
 - 版本滚动：新版本生成时（如 `chm-v4`），自动删除同类型最早的版本（`chm-v1`），其他类型不受影响
+- 按导出类型（chm / nginx / pdf）独立管理版本，每种类型只保留最近 3 个版本
 
 #### 2.7.3 vendor 共享依赖缓存
 

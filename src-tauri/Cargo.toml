@@ -21,9 +21,3 @@ tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sy-note-books-core = { path = "core" }
-
-# Vendored patch: genpdf-chinese 0.2.9 (unmaintained) fails to compile on Rust
-# 1.96+ due to a blanket-impl coherence conflict with the `time` crate. The
-# vendored copy under vendor/genpdf-chinese replaces it with concrete impls.
-[patch.crates-io]
-genpdf-chinese = { path = "vendor/genpdf-chinese" }
