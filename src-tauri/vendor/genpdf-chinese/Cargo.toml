@@ -1,0 +1,66 @@
+# Vendored from genpdf-chinese 0.2.9 (crates.io) with a fix for the
+# Rust 1.96+ coherence conflict caused by the blanket
+# `impl<T: Into<Mm>> From<T> for Margins`. See src/lib.rs for the patched impl.
+#
+# Applied via [patch.crates-io] in the workspace root Cargo.toml.
+[package]
+edition = "2018"
+name = "genpdf-chinese"
+version = "0.2.9"
+authors = [
+    "Robin Krahl <robin.krahl@ireas.org>",
+    "Ismael Sh <me@theiskaa.com>",
+]
+description = "User-friendly PDF generator written in pure Rust (vendored patch for Rust 1.96+)"
+homepage = "https://github.com/theiskaa/genpdfi"
+keywords = ["pdf", "text", "layout"]
+categories = ["text-processing"]
+license = "Apache-2.0 OR MIT"
+repository = "https://github.com/theiskaa/genpdfi"
+
+[features]
+default = []
+images = ["image", "printpdf/embedded_images"]
+
+[lib]
+name = "genpdf_chinese"
+path = "src/lib.rs"
+
+[dependencies.derive_more]
+version = "0.99"
+features = ["add", "add_assign", "from", "into", "mul", "mul_assign", "sum"]
+default-features = false
+
+[dependencies.hyphenation]
+version = "0.8"
+optional = true
+
+[dependencies.image]
+version = "0.24.9"
+optional = true
+default-features = false
+
+[dependencies.lopdf]
+version = "0.26"
+
+[dependencies.printpdf]
+version = "0.7.0"
+default-features = false
+
+[dependencies.ab_glyph]
+version = "0.2"
+
+[dependencies.subsetter]
+version = "0.2.3"
+
+[dependencies.ttf-parser]
+version = "0.24"
+
+[dev-dependencies.float-cmp]
+version = "0.8"
+features = ["std"]
+default-features = false
+
+[dev-dependencies.hyphenation]
+version = "0.8"
+features = ["embed_en-us"]

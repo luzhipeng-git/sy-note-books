@@ -33,6 +33,11 @@ cd src-tauri/core && cargo check   # core crate 类型检查
 # Tauri 全量编译/测试（需要 Docker Fedora 容器）
 pnpm docker:test           # cargo test --workspace（Docker 容器内）
 
+# PDF 导出跨平台测试（需要 Docker base 镜像，验证字体加载 + 多 OS 兼容）
+pnpm docker:pdf-test       # 在 Docker Fedora (Rust 最新版) 跑 PDF 导出测试
+./scripts/docker-pdf-test.sh --rebuild  # Dockerfile 字体变更后重建 base 镜像
+./scripts/docker-pdf-test.sh --verbose  # 显示完整测试输出
+
 # E2E 测试（需要 Docker Fedora 容器）
 pnpm test:e2e              # 智能构建 Docker 镜像 + 编译 + 运行 E2E 测试
 pnpm test:e2e:nobuild      # 跳过镜像构建，直接运行 E2E 测试
@@ -317,6 +322,48 @@ optimizeDeps: {
 1. **代理对象（Proxy）替代 null 返回值**：为 `getHost()`/`getRoughSVG()` 返回 no-op Proxy 对象。看似安全但 Proxy 被存入 Drawnix 内部状态，导致后续 `appendChild` 等真实操作失败，引发更严重的连锁崩溃。正确做法是返回 `null` + 调用方 optional chaining
 2. **`useEffect` 注册事件阻断**：parent `useEffect` 在 child `useEffect` 之后执行，无法在 Board 设置 WeakMap 之前拦截事件。必须用 `useLayoutEffect`
 3. **`useState` 标记 ready 状态**：`useState` 更新是异步的，阻断器无法同步读取 ready 值。必须用 `useRef`
+
+## PDF 导出：跨平台字体加载踩坑总结
+
+PDF 导出使用 `genpdf-chinese`（vendored 在 `src-tauri/vendor/genpdf-chinese/`），底层字体引擎已从 `rusttype 0.8` **换成 `ab_glyph`**（同 rusttype 作者的重写版，支持 TrueType + CFF 双轮廓）。跨 OS（Fedora/RHEL/macOS/Windows）+ 跨 Rust 版本测试时踩过的坑，全部通过 Docker 提前发现（避免污染 GitHub CI）。
+
+### 0. 字体引擎：rusttype → ab_glyph（当前实现）
+
+`genpdf-chinese` 原本基于 `rusttype 0.8`，它只能解析 TrueType 轮廓（`glyf` 表），遇到 CFF 轮廓（`CFF ` 表）直接判定 ill-formed——而 Linux 上最常见的高质量 CJK 字体 NotoSansCJK 恰好是 CFF。历史上只能退而用 `DroidSansFallbackFull.ttf`（TrueType，字形粗糙、无字重）当主字体。
+
+**当前方案**：vendored 的 `genpdf-chinese` 已把字体层换成 `ab_glyph`：
+- `ab_glyph::{Font as _, FontArc}` 替换所有 `rusttype` API（`fonts.rs` 是改动核心，`error.rs` 把 `rusttype::Error` 换成 `ab_glyph::InvalidFont`）。
+- **`Font as _` 是关键**：本模块已有自己的 `pub struct Font`（缓存的字体引用），直接 `use ab_glyph::Font` 会与本模块的 `Font` 结构体命名冲突（导致上百个编译错误）。`as _` 只把 trait 方法引入作用域，不绑定名字。
+- `FontVec::try_from_vec_and_index(data, 0)` 原生支持多字体 TTC（取首个字体）+ CFF 轮廓。`FontArc` 无此构造函数，所以用 `parse_font` helper 先建 `FontVec` 再包 `FontArc`（`FontArc` 才是 `Clone`，满足 `FontData` 的 `#[derive(Clone)]` 和 subset clone 路径）。
+- **度量换算坑**：rusttype 的 `.scaled(Scale::uniform(glyph_height)).h_metrics().advance_width` 返回 `unscaled * glyph_height / units_per_em`，而 ab_glyph 的 `h_advance_unscaled()` 返回纯字体单位值。`Font::new` 里的 `scale` 字段必须存 `glyph_height / units_per_em`（不是 `glyph_height` 本身），否则字符宽度偏大 `units_per_em` 倍，直接 `Page overflowed while trying to wrap a string`。同样的 `* scale` 也用于 `kern_unscaled` 和 `h_side_bearing_unscaled`。
+
+**效果**：NotoSansCJK（CFF）现可作主字体，DroidSans 降级为无 NotoSansCJK 时的兜底。`CJK_FONT_PATHS` 顺序不变（NotoSansCJK 在前，DroidSans 在后），只是现在 NotoSansCJK 真正生效了。
+
+### 1. `genpdf-chinese` 在 Rust 1.96+ 编译失败（coherence 冲突）
+
+**现象**：`genpdf-chinese 0.2.9`（已停止维护，唯一版本）在 Rust 1.96+ 报 `E0119: conflicting implementations`，与 `time` crate 的 `From` impl 冲突。CI 用 `dtolnay/rust-toolchain@stable`（即 1.96+），会直接 break。
+
+**根因**：`genpdf-chinese/src/lib.rs` 的 blanket impl `impl<T: Into<Mm>> From<T> for Margins` 过于宽泛，Rust 1.96 改进的 coherence 检查判定它与 `time` crate 冲突。
+
+**修复**：vendoring + patch。`src-tauri/vendor/genpdf-chinese/` 存放 patched 副本，通过 workspace 根 `[patch.crates-io]`（`src-tauri/Cargo.toml`）替换。patch 内容：把 blanket impl 换成具体的 `impl From<Mm>/From<f32>/From<f64> for Margins`。
+
+**关键**：`[patch.crates-io]` 写在 workspace 根 `src-tauri/Cargo.toml`。`cd src-tauri/core && cargo test` 会向上找到 workspace 根，patch 自动生效（`cargo tree` 可验证用的是 vendored 路径）。
+
+### 字体包清单（Docker 必装）
+
+| 包 | 提供字体 | 用途 |
+|----|---------|------|
+| `google-noto-sans-cjk-fonts` | NotoSansCJK-*.ttc（**CFF，ab_glyph 可解析**）| CJK 主字体（高质量、有字重）|
+| `google-droid-sans-fonts` | DroidSansFallbackFull.ttf（TrueType）| CJK 兜底（无 NotoSansCJK 时，如 Android/精简 Linux）|
+| `dejavu-sans-mono-fonts` | DejaVuSansMono.ttf | 代码块等宽字体 |
+| `liberation-mono-fonts` | LiberationMono-Regular.ttf | mono 备用 |
+
+### 跨平台字体路径差异
+
+`CJK_FONT_PATHS` 必须覆盖各发行版的包名差异（同名字体包，安装路径不同）：
+- Fedora：`/usr/share/fonts/google-noto-sans-cjk-fonts/`
+- RHEL/CentOS：`/usr/share/fonts/google-noto-cjk/`
+- Ubuntu/Debian：`/usr/share/fonts/opentype/noto/`
 
 ## 设计文档
 

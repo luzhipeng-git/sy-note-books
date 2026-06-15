@@ -406,16 +406,24 @@ fn resolve_image_path(src: &str, workspace_path: &Path, md_dir: &str) -> Option<
 // ═══════════════════════════════════════════════════════════════
 
 const CJK_FONT_PATHS: &[(&str, &str)] = &[
+    // Fedora (google-noto-sans-cjk-fonts package)
+    ("/usr/share/fonts/google-noto-sans-cjk-fonts/NotoSansCJK-Regular.ttc",
+     "/usr/share/fonts/google-noto-sans-cjk-fonts/NotoSansCJK-Bold.ttc"),
+    // RHEL / CentOS (google-noto-cjk package)
     ("/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
      "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Bold.ttc"),
-    ("/usr/share/fonts/google-droid-sans-fonts/DroidSansFallbackFull.ttf",
-     "/usr/share/fonts/google-droid-sans-fonts/DroidSansFallbackFull.ttf"),
+    // Ubuntu / Debian (fonts-noto-cjk package)
     ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
      "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"),
+    // Android / minimal Linux — TrueType fallback for systems without NotoSansCJK
+    ("/usr/share/fonts/google-droid-sans-fonts/DroidSansFallbackFull.ttf",
+     "/usr/share/fonts/google-droid-sans-fonts/DroidSansFallbackFull.ttf"),
+    // macOS
     ("/System/Library/Fonts/STHeiti Light.ttc",
      "/System/Library/Fonts/STHeiti Medium.ttc"),
     ("/Library/Fonts/Arial Unicode.ttf",
      "/Library/Fonts/Arial Unicode.ttf"),
+    // Windows
     ("C:\\Windows\\Fonts\\msyh.ttc",
      "C:\\Windows\\Fonts\\msyhbd.ttc"),
 ];
@@ -480,22 +488,15 @@ fn load_font_family(regular_path: &str, bold_path: &str) -> Result<FontFamily<Fo
     Ok(FontFamily { regular, bold, italic, bold_italic })
 }
 
-/// Load a font from .ttf/.otf/.ttc. For .ttc, validates and passes bytes directly.
+/// Load a font from .ttf/.otf/.ttc.
+///
+/// ab_glyph's `FontVec::try_from_vec_and_index(data, 0)` (used inside
+/// `FontData::new`) natively parses multi-font TTC collections by selecting the
+/// first font, so NotoSansCJK / macOS STHeiti / Windows msyh all load without a
+/// special case. No separate TTC validation is needed.
 fn load_single_font(path: &str) -> Result<FontData, String> {
     let data = fs::read(path).map_err(|e| format!("读取字体 {} 失败：{e}", path))?;
-
-    if path.ends_with(".ttc") {
-        // Validate the TTC contains a usable font
-        let collection = rusttype::FontCollection::from_bytes(data.clone())
-            .map_err(|e| format!("解析字体集合 {} 失败：{e}", path))?;
-        let _font = collection.into_font()
-            .map_err(|e| format!("提取字体 {} 失败：{e}", path))?;
-        // FontData::new internally calls rusttype::Font::from_bytes on the raw data
-        // For TTC files it will extract the first font automatically
-        FontData::new(data, None).map_err(|e| format!("创建 FontData 失败：{e}"))
-    } else {
-        FontData::load(path, None).map_err(|e| format!("加载字体 {} 失败：{e}", path))
-    }
+    FontData::new(data, None).map_err(|e| format!("加载字体 {} 失败：{e}", path))
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -606,6 +607,189 @@ mod tests {
         setup_test_workspace(&ws);
         let out = tmp.path().join("output.pdf");
         let result = export_file_as_pdf(&ws, "01-intro/index.md", &out, Some("自定义标题"), None);
+        assert!(result.is_ok(), "export failed: {:?}", result);
+        assert_valid_pdf(&out);
+    }
+
+    // ── Extended tests for cross-platform verification ──
+
+    #[test]
+    fn export_file_as_pdf_tables() {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("ws");
+        setup_test_workspace(&ws);
+        let md = "# 表格测试\n\n| 列A | 列B | 列C |\n|-----|-----|-----|\n| 数据1 | 数据2 | 数据3 |\n| 中文1 | 中文2 | 中文3 |\n\n多列表格导出。\n";
+        fs::write(ws.join("tables.md"), md).unwrap();
+        let out = tmp.path().join("output.pdf");
+        let result = export_file_as_pdf(&ws, "tables.md", &out, None, None);
+        assert!(result.is_ok(), "export failed: {:?}", result);
+        assert_valid_pdf(&out);
+    }
+
+    #[test]
+    fn export_file_as_pdf_task_list() {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("ws");
+        setup_test_workspace(&ws);
+        let md = "# 任务列表\n\n- [x] 已完成任务\n- [ ] 未完成任务\n- [x] 另一个完成项\n\n普通文本。\n";
+        fs::write(ws.join("tasks.md"), md).unwrap();
+        let out = tmp.path().join("output.pdf");
+        let result = export_file_as_pdf(&ws, "tasks.md", &out, None, None);
+        assert!(result.is_ok(), "export failed: {:?}", result);
+        assert_valid_pdf(&out);
+    }
+
+    #[test]
+    fn export_file_as_pdf_mixed_heading_levels() {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("ws");
+        setup_test_workspace(&ws);
+        let md = "# H1 标题\n\n## H2 标题\n\n### H3 标题\n\n#### H4 标题\n\n##### H5 标题\n\n各层级标题正文。\n";
+        fs::write(ws.join("headings.md"), md).unwrap();
+        let out = tmp.path().join("output.pdf");
+        let result = export_file_as_pdf(&ws, "headings.md", &out, None, None);
+        assert!(result.is_ok(), "export failed: {:?}", result);
+        assert_valid_pdf(&out);
+    }
+
+    #[test]
+    fn export_file_as_pdf_code_block_with_language() {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("ws");
+        setup_test_workspace(&ws);
+        let md = "# 代码块测试\n\n```rust\nfn main() {\n    println!(\"Hello, 世界！\");\n}\n```\n\n```javascript\nconst x = 42;\nconsole.log(x);\n```\n";
+        fs::write(ws.join("code.md"), md).unwrap();
+        let out = tmp.path().join("output.pdf");
+        let result = export_file_as_pdf(&ws, "code.md", &out, None, None);
+        assert!(result.is_ok(), "export failed: {:?}", result);
+        assert_valid_pdf(&out);
+    }
+
+    #[test]
+    fn export_file_as_pdf_inline_code() {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("ws");
+        setup_test_workspace(&ws);
+        let md = "# 行内代码\n\n使用 `cargo test` 运行测试。`Rust` 是一门系统编程语言。\n";
+        fs::write(ws.join("inline-code.md"), md).unwrap();
+        let out = tmp.path().join("output.pdf");
+        let result = export_file_as_pdf(&ws, "inline-code.md", &out, None, None);
+        assert!(result.is_ok(), "export failed: {:?}", result);
+        assert_valid_pdf(&out);
+    }
+
+    #[test]
+    fn export_file_as_pdf_strikethrough() {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("ws");
+        setup_test_workspace(&ws);
+        let md = "# 删除线\n\n~~这段文字被删除了~~\n\n正常文本和~~删除~~混排。\n";
+        fs::write(ws.join("strike.md"), md).unwrap();
+        let out = tmp.path().join("output.pdf");
+        let result = export_file_as_pdf(&ws, "strike.md", &out, None, None);
+        assert!(result.is_ok(), "export failed: {:?}", result);
+        assert_valid_pdf(&out);
+    }
+
+    #[test]
+    fn export_file_as_pdf_horizontal_rule() {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("ws");
+        setup_test_workspace(&ws);
+        let md = "# 分隔线\n\n上部分内容\n\n---\n\n下部分内容\n";
+        fs::write(ws.join("rule.md"), md).unwrap();
+        let out = tmp.path().join("output.pdf");
+        let result = export_file_as_pdf(&ws, "rule.md", &out, None, None);
+        assert!(result.is_ok(), "export failed: {:?}", result);
+        assert_valid_pdf(&out);
+    }
+
+    #[test]
+    fn export_file_as_pdf_embedded_png_image() {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("ws");
+        setup_test_workspace(&ws);
+        // Create a small PNG image (1x1 red pixel)
+        let assets_dir = ws.join("assets");
+        fs::create_dir_all(&assets_dir).unwrap();
+        // Minimal valid PNG: 1x1 red pixel
+        let png_bytes: [u8; 69] = [
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
+            0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, // 1x1
+            0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53, // 8-bit RGB
+            0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41, // IDAT chunk
+            0x54, 0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00, // compressed data
+            0x00, 0x00, 0x02, 0x00, 0x01, 0xE2, 0x21, 0xBC, // CRC
+            0x33, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, // IEND chunk
+            0x44, 0xAE, 0x42, 0x60, 0x82,                     // CRC
+        ];
+        fs::write(assets_dir.join("test.png"), png_bytes).unwrap();
+        let md = "# 图片测试\n\n![测试图片](assets/test.png)\n\n图片后文本。\n";
+        fs::write(ws.join("image.md"), md).unwrap();
+        let out = tmp.path().join("output.pdf");
+        let result = export_file_as_pdf(&ws, "image.md", &out, None, None);
+        assert!(result.is_ok(), "export failed: {:?}", result);
+        assert_valid_pdf(&out);
+    }
+
+    #[test]
+    fn export_file_as_pdf_long_document() {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("ws");
+        setup_test_workspace(&ws);
+        // Generate a multi-page document
+        let mut md = String::from("# 长文档测试\n\n");
+        for i in 1..=50 {
+            md.push_str(&format!("## 第 {} 节\n\n这是第 {} 节的内容。包含一些中文文字和 English text。\n\n", i, i));
+            if i % 5 == 0 {
+                md.push_str(&format!("```\nfn function_{}() {{\n    let x = {};\n}}\n```\n\n", i, i));
+            }
+        }
+        fs::write(ws.join("long.md"), md).unwrap();
+        let out = tmp.path().join("output.pdf");
+        let result = export_file_as_pdf(&ws, "long.md", &out, None, None);
+        assert!(result.is_ok(), "export failed: {:?}", result);
+        assert_valid_pdf(&out);
+        // Long document should produce a substantial PDF
+        let data = fs::read(&out).unwrap();
+        assert!(data.len() > 5000, "Long document PDF should be substantial, got {} bytes", data.len());
+    }
+
+    #[test]
+    fn export_file_as_pdf_empty_document() {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("ws");
+        setup_test_workspace(&ws);
+        fs::write(ws.join("empty.md"), "").unwrap();
+        let out = tmp.path().join("output.pdf");
+        let result = export_file_as_pdf(&ws, "empty.md", &out, None, None);
+        assert!(result.is_ok(), "export failed: {:?}", result);
+        assert_valid_pdf(&out);
+    }
+
+    #[test]
+    fn export_file_as_pdf_mixed_chinese_english() {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("ws");
+        setup_test_workspace(&ws);
+        let md = "# 中英混排测试\n\nThis is English text with 中文混合。\n\n- English item with 中文描述\n- **Bold中文** and *italic English*\n- `code中英混排` inline\n\n```\n// 代码中的中文注释\nlet msg = \"你好世界\";\n```\n";
+        fs::write(ws.join("mixed.md"), md).unwrap();
+        let out = tmp.path().join("output.pdf");
+        let result = export_file_as_pdf(&ws, "mixed.md", &out, None, None);
+        assert!(result.is_ok(), "export failed: {:?}", result);
+        assert_valid_pdf(&out);
+    }
+
+    #[test]
+    fn export_file_as_pdf_output_dir_creation() {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("ws");
+        setup_test_workspace(&ws);
+        let md = "# 目录创建测试\n\n测试输出目录自动创建。\n";
+        fs::write(ws.join("dir-test.md"), md).unwrap();
+        let out = tmp.path().join("nested").join("output").join("output.pdf");
+        let result = export_file_as_pdf(&ws, "dir-test.md", &out, None, None);
         assert!(result.is_ok(), "export failed: {:?}", result);
         assert_valid_pdf(&out);
     }

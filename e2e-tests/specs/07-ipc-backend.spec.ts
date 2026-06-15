@@ -266,9 +266,9 @@ describe('Command 4: open_workspace', () => {
     expect(ws.workspaceMeta.author).toBe('E2E Tester');
     expect(ws.workspaceMeta.language).toBe('zh-CN');
 
-    // 文件树
+    // 文件树 — fixture 基础有 4 章（前序测试可能追加更多），验证至少 4 章
     expect(ws.summary).toBeDefined();
-    expect(ws.summary.length).toBeGreaterThan(0);
+    expect(ws.summary.length).toBeGreaterThanOrEqual(4);
 
     // 每个 summary 节点有 title、path、level
     for (const node of ws.summary) {
@@ -277,6 +277,13 @@ describe('Command 4: open_workspace', () => {
       expect(node.path).toMatch(/\S/);
       expect(typeof node.level).toBe('number');
     }
+
+    // 验证 fixture 中的已知章节存在（精确值，非 /\S/）
+    const chapterTitles = ws.summary.map(n => n.title);
+    expect(chapterTitles).toContain('入门指南');
+    expect(chapterTitles).toContain('系统架构');
+    expect(chapterTitles).toContain('API 参考');
+    expect(chapterTitles).toContain('附录');
 
     // 修复动作数组 — fixture workspace 所有文件完整，应为空数组
     expect(ws.repairs).toEqual([]);
@@ -1044,20 +1051,22 @@ describe('Command 18: save_drawnix', () => {
 // ═══════════════════════════════════════════════════════════
 
 describe('Command 19: export_chm', () => {
-  it('合法 workspace → 返回 outputPath 参数原值（stub）', async () => {
+  it('合法 workspace → 返回输出路径（编译成功时为 .chm，否则为项目目录）', async () => {
     const outputPath = await ipcExportChm(TEST_WS, '/tmp/dist/chm-e2e');
-    // stub 直接返回传入的 outputPath
-    expect(outputPath).toBe('/tmp/dist/chm-e2e');
+    // 当 chmcmd 可用时，返回编译后的 .chm 文件路径；
+    // 不可用时，返回项目目录（outputPath 原值）。
+    expect(outputPath).toMatch(/^\/tmp\/dist\/chm-e2e(\/output\.chm)?$/);
     expect(outputPath).toMatch(/^\//);
   });
 
-  it('带 chapter 参数 → 仍返回 outputPath（stub）', async () => {
+  it('带 chapter 参数 → 返回输出路径', async () => {
     const outputPath = await invokeIPC<string>('export_chm', {
       workspacePath: TEST_WS,
       outputPath: '/tmp/dist/chm-chapter-e2e',
       chapter: '01-getting-started',
     });
-    expect(outputPath).toBe('/tmp/dist/chm-chapter-e2e');
+    // 同上：编译成功时为 .chm，否则为项目目录
+    expect(outputPath).toMatch(/^\/tmp\/dist\/chm-chapter-e2e(\/output\.chm)?$/);
   });
 
   it('不存在的 workspace → 报错含 "路径不存在"', async () => {

@@ -92,6 +92,7 @@ export interface UserSettings {
   recentWorkspaces: RecentWorkspace[];
   theme: 'light' | 'dark';
   sidebarWidth: number;
+  sidebarCollapsed: boolean;
 }
 
 // ─── 便捷 IPC 调用函数 ───────────────────────────────────
@@ -106,6 +107,29 @@ export async function ipcOpenWorkspace(
 /** 调用 read_file，验证 Rust 能正确读取磁盘文件 */
 export async function ipcReadFile(filePath: string): Promise<string> {
   return await invokeIPC<string>('read_file', { path: filePath });
+}
+
+/** 文件元数据（stat_file 返回值） */
+export interface FileStat {
+  exists: boolean;
+  size: number;
+  isFile: boolean;
+  isDir: boolean;
+}
+
+/** 调用 stat_file，获取文件元数据（存在性、大小、类型） */
+export async function ipcStatFile(filePath: string): Promise<FileStat> {
+  return await invokeIPC<FileStat>('stat_file', { path: filePath });
+}
+
+/** 调用 read_file_head，获取文件头部 N 字节的 hex（用于 magic bytes 校验） */
+export async function ipcReadFileHead(filePath: string, bytes: number): Promise<string> {
+  return await invokeIPC<string>('read_file_head', { path: filePath, bytes });
+}
+
+/** 调用 read_file_tail，获取文件尾部 N 字节的 UTF-8 字符串（用于 %%EOF 等校验） */
+export async function ipcReadFileTail(filePath: string, bytes: number): Promise<string> {
+  return await invokeIPC<string>('read_file_tail', { path: filePath, bytes });
 }
 
 /** 调用 save_file，验证 Rust 能正确写入磁盘 */
@@ -219,4 +243,48 @@ export async function ipcListAssets(
     'list_assets',
     { path: dirPath },
   );
+}
+
+/** 调用 reorder_chapters */
+export async function ipcReorderChapters(
+  workspacePath: string,
+  chapterOrders: Array<{ path: string; newOrder: number }>,
+): Promise<void> {
+  return await invokeIPC<void>('reorder_chapters', { workspacePath, chapterOrders });
+}
+
+/** 调用 prepare_export_output，获取下一次导出的版本化路径 */
+export async function ipcPrepareExportOutput(
+  workspacePath: string,
+  exportType: string,
+): Promise<string> {
+  return await invokeIPC<string>('prepare_export_output', { workspacePath, exportType });
+}
+
+/** 调用 prune_export_versions，清理旧版本 */
+export async function ipcPruneExportVersions(
+  workspacePath: string,
+  exportType: string,
+): Promise<number> {
+  return await invokeIPC<number>('prune_export_versions', { workspacePath, exportType });
+}
+
+/** 调用 save_settings */
+export async function ipcSaveSettings(settings: UserSettings): Promise<void> {
+  return await invokeIPC<void>('save_settings', { settings });
+}
+
+/** 调用 export_chm 并指定输出路径和 title/author 覆盖 */
+export async function ipcExportChmFull(
+  workspacePath: string,
+  outputPath: string,
+  title?: string,
+  author?: string,
+): Promise<string> {
+  return await invokeIPC<string>('export_chm', {
+    workspacePath,
+    outputPath,
+    title: title ?? undefined,
+    author: author ?? undefined,
+  });
 }

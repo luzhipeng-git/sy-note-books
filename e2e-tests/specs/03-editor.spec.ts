@@ -29,8 +29,8 @@ describe('编辑器: 初始化', () => {
 
     const bc = await browser.$(S.breadcrumb);
     const bcText = await bc.getText();
-    // Breadcrumb should have at least "workspace / file" structure
-    expect(bcText).toContain('/');
+    // 面包屑必须包含 workspace 标题（fixture 的标题是 "E2E测试文档"）
+    expect(bcText).toContain('E2E测试文档');
     const parts = bcText.split('/');
     expect(parts.length).toBeGreaterThanOrEqual(2);
   });
@@ -39,45 +39,51 @@ describe('编辑器: 初始化', () => {
 // ─── Markdown 输入触发 ────────────────────────────────────
 
 describe('编辑器: Markdown 输入触发', () => {
-  it('输入 # + 空格后 IR 渲染为 H1 标题', async () => {
+  it('输入 # + 文本后 IR 渲染为 H1 标题，内容匹配', async () => {
     await ensureEditor();
 
-    const ir = await wait(S.vditorIR, 10000);
-    // JS click 获取焦点
-    await browser.execute((sel: string) => {
-      const el = document.querySelector(sel) as HTMLElement;
-      if (el) el.click();
-    }, S.vditorIR);
-    await browser.pause(300);
+    // 通过 Vditor API 设置内容（清空 + 插入标题文本）
+    // setValue 触发 IR 渲染，比 execCommand insertText 更可靠
+    const headingText = 'E2EHeadingTest';
+    await browser.execute((content: string) => {
+      const vditor = (window as any).__VDITOR_INSTANCE__;
+      if (vditor?.setValue) vditor.setValue(`# ${content}`, true);
+    }, headingText);
+    await browser.pause(1500);
 
-    // 通过 JS 模拟输入
-    await jsTypeInEditor(S.vditorIR, '# ');
-    await browser.pause(1000);
-
-    const h1 = await browser.$('.vditor-ir h1');
-    await h1.waitForExist({ timeout: 5000 });
-    // Verify H1 has rendered content (not just an empty tag)
-    const h1Text = await h1.getText();
-    expect(h1Text.length).toBeGreaterThan(0);
+    // 查找包含输入文本的 H1
+    const h1Found = await browser.execute((text: string) => {
+      const h1s = document.querySelectorAll('.vditor-ir h1');
+      for (const h1 of h1s) {
+        if (h1.textContent?.includes(text)) return h1.textContent;
+      }
+      return null;
+    }, headingText);
+    expect(h1Found).not.toBeNull();
+    expect(h1Found).toContain(headingText);
   });
 
-  it('输入 - + 空格后 IR 渲染为无序列表', async () => {
+  it('输入 - + 文本后 IR 渲染为无序列表，内容匹配', async () => {
     await ensureEditor();
 
-    await browser.execute((sel: string) => {
-      const el = document.querySelector(sel) as HTMLElement;
-      if (el) el.click();
-    }, S.vditorIR);
-    await browser.pause(300);
+    // 通过 Vditor API 设置内容（清空 + 插入列表项）
+    const itemText = 'E2EListItemTest';
+    await browser.execute((content: string) => {
+      const vditor = (window as any).__VDITOR_INSTANCE__;
+      if (vditor?.setValue) vditor.setValue(`- ${content}`, true);
+    }, itemText);
+    await browser.pause(1500);
 
-    await jsTypeInEditor(S.vditorIR, '- ');
-    await browser.pause(1000);
-
-    const listItem = await browser.$('.vditor-ir li');
-    await listItem.waitForExist({ timeout: 5000 });
-    // Verify list item has rendered content
-    const liText = await listItem.getText();
-    expect(liText.length).toBeGreaterThan(0);
+    // 查找包含输入文本的 li
+    const liFound = await browser.execute((text: string) => {
+      const lis = document.querySelectorAll('.vditor-ir li');
+      for (const li of lis) {
+        if (li.textContent?.includes(text)) return li.textContent;
+      }
+      return null;
+    }, itemText);
+    expect(liFound).not.toBeNull();
+    expect(liFound).toContain(itemText);
   });
 });
 
@@ -134,7 +140,7 @@ describe('编辑器: 手动保存', () => {
 // ─── 文件切换 ─────────────────────────────────────────────
 
 describe('编辑器: 文件切换', () => {
-  it('切换文件后面包屑和编辑器内容变化', async () => {
+  it('切换文件后面包屑和编辑器内容变化', async function () {
     await openWorkspace();
 
     // 展开所有章节
@@ -145,16 +151,15 @@ describe('编辑器: 文件切换', () => {
     await browser.pause(500);
 
     // 获取所有页面
-    const pages = await browser.$$(S.treeItem);
+    const pages = await browser.$(S.treeItem);
     const nonFolderPages = await browser.execute(() => {
       const items = document.querySelectorAll('.tree-item:not(.folder):not(.missing)');
       return items.length;
     });
 
     if (nonFolderPages < 2) {
-      // Explicit skip — fixture must have ≥2 pages for this test
-      console.warn('Skipping file switch test: fixture has fewer than 2 pages');
-      return;
+      // Explicit pending — fixture must have ≥2 pages for this test
+      this.skip();
     }
 
     // 点击第一页

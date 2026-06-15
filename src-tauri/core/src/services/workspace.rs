@@ -518,6 +518,140 @@ pub fn delete_node(workspace_path: &Path, node_path: &str) -> Result<(), String>
     Ok(())
 }
 
+/// Reorder chapters by renaming their `NN-` number prefixes to match the new
+/// order, and updating SUMMARY.md accordingly.
+///
+/// `chapter_orders` is a list of `{ path, new_order }` where:
+/// - `path` is the chapter directory name (e.g. "01-intro"), relative to the workspace root
+/// - `new_order` is the new 1-based sequence number (1, 2, 3, ...)
+///
+/// The slug portion of the directory name is preserved; only the `NN-` prefix changes.
+/// Two-phase rename (temp names first, then final names) avoids collisions when
+/// swapping numbers (e.g. 01↔02).
+///
+/// Updates SUMMARY.md LAST — if SUMMARY update fails, the filesystem is NOT rolled back
+/// (chapter renames are already committed), but the error surfaces so the caller can retry
+/// the SUMMARY refresh by reopening the workspace.
+pub fn reorder_chapters(
+    workspace_path: &Path,
+    chapter_orders: &[crate::models::workspace::ChapterOrder],
+) -> Result<(), String> {
+    // Validate all paths are within the workspace before touching anything.
+    for order in chapter_orders {
+        ensure_relative_within_workspace(workspace_path, &order.path)?;
+    }
+
+    // Resolve the new directory name for each chapter: keep the slug, replace the NN- prefix.
+    // `path` may be the chapter dir name ("01-intro") or point at index.md ("01-intro/index.md").
+    let renames: Vec<(String, String)> = chapter_orders
+        .iter()
+        .filter_map(|order| {
+            let dir_name = order
+                .path
+                .split('/')
+                .next()
+                .filter(|s| !s.is_empty())?;
+            let slug = dir_name
+                .splitn(2, '-')
+                .nth(1)
+                .unwrap_or("");
+            let new_dir_name = format!("{:02}-{}", order.new_order, slug);
+            if new_dir_name == dir_name {
+                None // No change needed
+            } else {
+                Some((dir_name.to_string(), new_dir_name))
+            }
+        })
+        .collect();
+
+    if renames.is_empty() {
+        return Ok(()); // Nothing to rename
+    }
+
+    // Phase 1: rename to unique temp names to avoid collisions.
+    let temp_names: Vec<(std::path::PathBuf, std::path::PathBuf)> = renames
+        .iter()
+        .map(|(old, _new)| {
+            let temp_name = format!("__reorder_tmp_{}__", old);
+            (
+                workspace_path.join(old),
+                workspace_path.join(&temp_name),
+            )
+        })
+        .collect();
+
+    for (old_full, temp_full) in &temp_names {
+        if old_full.exists() {
+            fs::rename(old_full, temp_full)
+                .map_err(|e| format!("临时重命名 {} 失败: {}", old_full.display(), e))?;
+        }
+    }
+
+    // Phase 2: rename from temp to final names.
+    for ((_old, new), (_, temp_full)) in renames.iter().zip(temp_names.iter()) {
+        let final_full = workspace_path.join(new);
+        if temp_full.exists() {
+            fs::rename(temp_full, &final_full)
+                .map_err(|e| format!("重命名为 {} 失败: {}", new, e))?;
+        }
+    }
+
+    // Update SUMMARY.md to reflect new directory names.
+    let summary_result = (|| -> Result<(), String> {
+        let (summary, ws_title) = read_summary(workspace_path)?;
+        let mut summary = summary;
+
+        // Build a lookup of old dir name → new dir name
+        let rename_map: std::collections::HashMap<&str, &str> =
+            renames.iter().map(|(o, n)| (o.as_str(), n.as_str())).collect();
+
+        for entry in &mut summary {
+            // entry.path looks like "01-intro/index.md" — replace the dir prefix
+            for (old_dir, new_dir) in &rename_map {
+                let old_prefix = format!("{}/", old_dir);
+                if entry.path.starts_with(&old_prefix) || entry.path == *old_dir {
+                    entry.path = entry.path.replacen(old_dir, new_dir, 1);
+                }
+            }
+            for child in &mut entry.children {
+                for (old_dir, new_dir) in &rename_map {
+                    let old_prefix = format!("{}/", old_dir);
+                    if child.path.starts_with(&old_prefix) || child.path == *old_dir {
+                        child.path = child.path.replacen(old_dir, new_dir, 1);
+                    }
+                }
+            }
+        }
+
+        // Reorder the summary entries to match the new sequence.
+        // Build the desired order from chapter_orders: a chapter's sort key is new_order.
+        // Entries not in chapter_orders keep their relative position at the end.
+        let order_map: std::collections::HashMap<String, u32> = chapter_orders
+            .iter()
+            .map(|o| {
+                let dir = o.path.split('/').next().unwrap_or("").to_string();
+                // Normalize: the path given may already be old-style, map to new dir
+                let key = renames
+                    .iter()
+                    .find(|(old, _)| old == &dir)
+                    .map(|(_, new)| new.clone())
+                    .unwrap_or(dir);
+                (key, o.new_order)
+            })
+            .collect();
+
+        summary.sort_by_key(|entry| {
+            let entry_dir = entry.path.split('/').next().unwrap_or("").to_string();
+            order_map.get(&entry_dir).copied().unwrap_or(u32::MAX)
+        });
+
+        write_summary(workspace_path, &summary, &ws_title)
+    })();
+
+    summary_result?; // Surface SUMMARY errors, but renames are already committed.
+    Ok(())
+}
+
 // === Internal helpers ===
 
 fn read_summary(workspace_path: &Path) -> Result<(Vec<SummaryEntry>, String), String> {
@@ -603,7 +737,9 @@ fn scan_chapter_dirs(path: &Path) -> Vec<String> {
         .filter(|e| e.path().is_dir())
         .filter_map(|e| {
             let name = e.file_name().to_string_lossy().to_string();
-            if name == "assets" || name.starts_with('.') {
+            // Exclude system directories: assets (shared resources), dist (export
+            // output, §2.7), and hidden directories. These are not user chapters.
+            if name == "assets" || name == "dist" || name.starts_with('.') {
                 return None;
             }
             Some(name)
@@ -621,7 +757,7 @@ fn extract_first_heading(content: String) -> Option<String> {
 }
 
 fn chrono_now() -> String {
-    "2026-05-24".to_string()
+    chrono::Local::now().format("%Y-%m-%d").to_string()
 }
 
 pub fn generate_chapter_dir_name(title: &str, existing_dirs: &[String]) -> String {
@@ -794,6 +930,33 @@ mod tests {
         let result = open_workspace(path).unwrap();
         assert_eq!(result.summary.len(), 1);
         assert!(result.repairs.iter().any(|r| r.kind == "added_missing_chapter"));
+    }
+
+    #[test]
+    fn test_open_workspace_ignores_dist_directory() {
+        // dist/ is an export-output system directory (§2.7), not a chapter.
+        // It must not be auto-appended to SUMMARY as a missing chapter.
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path();
+        create_workspace(path, "测试", "dev", None).unwrap();
+
+        let chapter = path.join("01-intro");
+        fs::create_dir_all(chapter.join("assets")).unwrap();
+        fs::write(chapter.join("index.md"), "# 入门").unwrap();
+        let summary = "# 测试\n- [入门](01-intro/index.md)\n";
+        fs::write(path.join("SUMMARY.md"), summary).unwrap();
+
+        // Simulate export output in dist/
+        fs::create_dir_all(path.join("dist").join("chm-v1")).unwrap();
+        fs::write(path.join("dist").join("chm-v1").join("index.html"), "<html/>").unwrap();
+
+        let result = open_workspace(path).unwrap();
+        // dist/ should NOT appear as a chapter or repair
+        assert_eq!(result.summary.len(), 1, "dist should not be added as a chapter");
+        assert!(
+            !result.repairs.iter().any(|r| r.detail.contains("dist")),
+            "dist should not trigger a repair: {:?}", result.repairs
+        );
     }
 
     #[test]
@@ -1525,5 +1688,111 @@ mod tests {
         // Child should be removed from SUMMARY
         let child_titles: Vec<&str> = parsed[0].children.iter().map(|c| c.title.as_str()).collect();
         assert!(!child_titles.contains(&"Sub Page"));
+    }
+
+    // ─── reorder_chapters ───────────────────────────────────────
+
+    use crate::models::workspace::ChapterOrder;
+
+    #[test]
+    fn test_reorder_chapters_basic() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws_path = tmp.path();
+        create_workspace(ws_path, "测试", "dev", None).unwrap();
+        create_chapter(ws_path, "Alpha").unwrap();
+        create_chapter(ws_path, "Beta").unwrap();
+
+        // Before: 01-alpha, 02-beta
+        assert!(ws_path.join("01-alpha").exists());
+        assert!(ws_path.join("02-beta").exists());
+
+        // Swap: Alpha → 2, Beta → 1
+        let orders = vec![
+            ChapterOrder { path: "01-alpha".to_string(), new_order: 2 },
+            ChapterOrder { path: "02-beta".to_string(), new_order: 1 },
+        ];
+        reorder_chapters(ws_path, &orders).unwrap();
+
+        // After: 02-alpha, 01-beta
+        assert!(ws_path.join("02-alpha").exists(), "01-alpha should become 02-alpha");
+        assert!(ws_path.join("01-beta").exists(), "02-beta should become 01-beta");
+        // Old dirs should not exist
+        assert!(!ws_path.join("01-alpha").exists());
+        assert!(!ws_path.join("02-beta").exists());
+    }
+
+    #[test]
+    fn test_reorder_chapters_updates_summary_paths() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws_path = tmp.path();
+        create_workspace(ws_path, "测试", "dev", None).unwrap();
+        create_chapter(ws_path, "Alpha").unwrap();
+        create_chapter(ws_path, "Beta").unwrap();
+
+        // Swap order
+        let orders = vec![
+            ChapterOrder { path: "01-alpha".to_string(), new_order: 2 },
+            ChapterOrder { path: "02-beta".to_string(), new_order: 1 },
+        ];
+        reorder_chapters(ws_path, &orders).unwrap();
+
+        let summary = fs::read_to_string(ws_path.join("SUMMARY.md")).unwrap();
+        let parsed = parse_summary(&summary);
+        // SUMMARY should now reference the renamed dirs, in new order
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].path, "01-beta/index.md", "first entry should be Beta");
+        assert_eq!(parsed[1].path, "02-alpha/index.md", "second entry should be Alpha");
+    }
+
+    #[test]
+    fn test_reorder_chapters_preserves_internal_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws_path = tmp.path();
+        create_workspace(ws_path, "测试", "dev", None).unwrap();
+        create_chapter(ws_path, "Alpha").unwrap();
+        create_page(ws_path, "01-alpha", "Sub Page").unwrap();
+
+        // Verify internal file exists
+        assert!(ws_path.join("01-alpha/sub-page.md").exists());
+
+        // Move Alpha to position 2 (no other chapter, but tests rename correctness)
+        let orders = vec![
+            ChapterOrder { path: "01-alpha".to_string(), new_order: 5 },
+        ];
+        reorder_chapters(ws_path, &orders).unwrap();
+
+        // Internal files should be preserved
+        assert!(ws_path.join("05-alpha").exists());
+        assert!(ws_path.join("05-alpha/index.md").exists());
+        assert!(ws_path.join("05-alpha/sub-page.md").exists());
+    }
+
+    #[test]
+    fn test_reorder_chapters_no_change_when_same() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws_path = tmp.path();
+        create_workspace(ws_path, "测试", "dev", None).unwrap();
+        create_chapter(ws_path, "Alpha").unwrap();
+
+        // Same order — should be a no-op
+        let orders = vec![ChapterOrder { path: "01-alpha".to_string(), new_order: 1 }];
+        reorder_chapters(ws_path, &orders).unwrap();
+
+        assert!(ws_path.join("01-alpha").exists());
+    }
+
+    #[test]
+    fn test_reorder_chapters_rejects_path_traversal() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws_path = tmp.path();
+        create_workspace(ws_path, "测试", "dev", None).unwrap();
+
+        let orders = vec![ChapterOrder {
+            path: "../../etc".to_string(),
+            new_order: 1,
+        }];
+        let result = reorder_chapters(ws_path, &orders);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("超出工作区范围"));
     }
 }

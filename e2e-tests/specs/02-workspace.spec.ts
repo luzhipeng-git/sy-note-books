@@ -110,22 +110,25 @@ describe('文件树: 选中文件', () => {
 
     expect(fileName).not.toBe('');
     expect(typeof fileName).toBe('string');
-    expect(fileName!.length).toBeGreaterThan(0);
+    // 文件名必须是有效内容（fixture 页面名是中文，如"快速开始"、"架构概览"等）
+    expect(fileName!.trim().length).toBeGreaterThan(0);
     await browser.pause(1500);
 
     await wait(S.vditor, 10000);
 
     const bc = await browser.$(S.breadcrumb);
     const bcText = await bc.getText();
-    // Breadcrumb should show a path structure with separator
-    expect(bcText).toContain('/');
+    // 面包屑必须包含 workspace 标题（fixture 标题为 "E2E测试文档"）
+    expect(bcText).toContain('E2E测试文档');
 
     const sb = await browser.$(S.statusBar);
     const sbText = await sb.getText();
-    expect(sbText).toMatch(/行\s*\d/);
+    // 状态栏必须包含 Markdown 标记和行列信息
+    expect(sbText).toContain(T.editorLabelMd);
+    expect(sbText).toMatch(/行\s*\d.*列\s*\d/);
   });
 
-  it('点击另一个文件，前一个取消高亮，新文件高亮', async () => {
+  it('点击另一个文件，前一个取消高亮，新文件高亮', async function () {
     await openWorkspace();
 
     // 找一个有 ≥2 子页面的章节
@@ -148,9 +151,8 @@ describe('文件树: 选中文件', () => {
     await browser.pause(1000);
 
     if (!result || result.count < 2) {
-      // Skip if fixture has insufficient data, but make it explicit
-      console.warn('Skipping: fixture has fewer than 2 pages for multi-select test');
-      return;
+      // Explicit pending — fixture must have ≥2 pages for this test
+      this.skip();
     }
 
     // 点击第二页
@@ -170,11 +172,10 @@ describe('文件树: 选中文件', () => {
       };
     });
     if (!states) {
-      console.warn('Skipping: could not get page states for multi-select verification');
-      return;
+      this.skip();
     }
-    expect(states.first).not.toContain('active');
-    expect(states.second).toContain('active');
+    expect(states!.first).not.toContain('active');
+    expect(states!.second).toContain('active');
   });
 });
 

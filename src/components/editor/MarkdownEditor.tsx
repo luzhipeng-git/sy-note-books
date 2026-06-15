@@ -198,11 +198,14 @@ export function MarkdownEditor({ filePath, content }: MarkdownEditorProps) {
     });
 
     vditorRef.current = vditor;
+    // Expose for E2E testing (Vditor instance API: setValue, insertValue, etc.)
+    (window as any).__VDITOR_INSTANCE__ = vditor;
 
     return () => {
       vditorRef.current?.destroy();
       vditorRef.current = null;
       vditorReadyRef.current = false;
+      (window as any).__VDITOR_INSTANCE__ = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

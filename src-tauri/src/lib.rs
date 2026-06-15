@@ -1,3 +1,4 @@
+use std::fs;
 use std::path::Path;
 
 use tauri::Manager;
@@ -45,6 +46,21 @@ fn save_file(path: String, content: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn stat_file(path: String) -> Result<sy_note_books_core::services::file::FileStat, String> {
+    file_service::stat_file(Path::new(&path))
+}
+
+#[tauri::command]
+fn read_file_head(path: String, bytes: usize) -> Result<String, String> {
+    file_service::read_file_head(Path::new(&path), bytes)
+}
+
+#[tauri::command]
+fn read_file_tail(path: String, bytes: usize) -> Result<String, String> {
+    file_service::read_file_tail(Path::new(&path), bytes)
+}
+
+#[tauri::command]
 fn read_all_md_files(workspace_path: String) -> Result<Vec<sy_note_books_core::models::workspace::MdFileContent>, String> {
     file_service::read_all_md_files(Path::new(&workspace_path))
 }
@@ -67,6 +83,14 @@ fn rename_node(workspace_path: String, path: String, new_title: String) -> Resul
 #[tauri::command]
 fn delete_node(workspace_path: String, path: String) -> Result<(), String> {
     ws_service::delete_node(Path::new(&workspace_path), &path)
+}
+
+#[tauri::command]
+fn reorder_chapters(
+    workspace_path: String,
+    chapter_orders: Vec<sy_note_books_core::models::workspace::ChapterOrder>,
+) -> Result<(), String> {
+    ws_service::reorder_chapters(Path::new(&workspace_path), &chapter_orders)
 }
 
 #[tauri::command]
@@ -152,6 +176,26 @@ fn export_pdf_file_html(workspace_path: String, file_path: String, title: Option
 #[tauri::command]
 fn copy_export_output(src: String, dst: String) -> Result<(), String> {
     export_service::copy_export_output(Path::new(&src), Path::new(&dst))
+}
+
+/// Compute the next export version output path for a workspace + type, then
+/// prune older versions beyond the retention limit.
+/// Returns the absolute output path (e.g. ".../dist/chm-v4").
+#[tauri::command]
+fn prepare_export_output(workspace_path: String, export_type: String) -> Result<String, String> {
+    let dist_dir = Path::new(&workspace_path).join("dist");
+    fs::create_dir_all(&dist_dir).map_err(|e| format!("创建 dist 目录失败：{e}"))?;
+    let next = export_service::next_export_version(&dist_dir, &export_type);
+    let output_path = dist_dir.join(format!("{}-v{}", export_type, next));
+    Ok(output_path.to_string_lossy().to_string())
+}
+
+/// Prune old export versions of a given type, keeping only the most recent few.
+/// Called by the frontend after a successful export.
+#[tauri::command]
+fn prune_export_versions(workspace_path: String, export_type: String) -> Result<u32, String> {
+    let dist_dir = Path::new(&workspace_path).join("dist");
+    export_service::prune_export_versions(&dist_dir, &export_type)
 }
 
 #[tauri::command]
@@ -273,11 +317,15 @@ pub fn run() {
             create_workspace,
             read_file,
             save_file,
+            stat_file,
+            read_file_head,
+            read_file_tail,
             read_all_md_files,
             create_chapter,
             create_page,
             rename_node,
             delete_node,
+            reorder_chapters,
             get_settings,
             save_settings,
             get_recent_workspaces,
@@ -291,6 +339,8 @@ pub fn run() {
             export_pdf_file_html,
             export_pdf_file,
             copy_export_output,
+            prepare_export_output,
+            prune_export_versions,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

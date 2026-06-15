@@ -37,6 +37,11 @@ export interface PageInfo {
   path: string;
 }
 
+export interface ChapterOrder {
+  path: string;
+  newOrder: number;
+}
+
 export interface RecentWorkspace {
   path: string;
   title: string;

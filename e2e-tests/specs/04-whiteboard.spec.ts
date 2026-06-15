@@ -51,8 +51,8 @@ describe('白板: 进入模式', () => {
     const title = await browser.$(S.wbTopbarTitle);
     expect(await title.isDisplayed()).toBe(true);
     const titleText = await title.getText();
-    // Title should contain the file name or a whiteboard indicator
-    expect(titleText.trim().length).toBeGreaterThan(0);
+    // 白板顶栏标题必须包含「绘制插图」（enterWhiteboard 的 anchor.nearestHeading 为「当前段落」）
+    expect(titleText).toContain('绘制插图');
 
     const saveBtn = await browser.$(S.wbSaveBtn);
     expect(await saveBtn.isDisplayed()).toBe(true);

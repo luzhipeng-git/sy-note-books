@@ -51,6 +51,8 @@ describe('搜索: 打开和关闭', () => {
   afterEach(cleanupSearch);
 
   it('打开搜索对话框，输入框可见且有 placeholder', async () => {
+    // 搜索需要在 workspace 上下文中才有意义（索引已构建）
+    await openWorkspace();
     await openGlobalSearch();
 
     const input = await browser.$(S.gsInput);
@@ -61,6 +63,7 @@ describe('搜索: 打开和关闭', () => {
   });
 
   it('关闭搜索对话框', async () => {
+    await openWorkspace();
     await openGlobalSearch();
     await closeGlobalSearch();
     const overlay = await browser.$(S.gsOverlay);

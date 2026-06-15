@@ -64,9 +64,8 @@ describe('全局: 视图状态切换', () => {
 
     const bc = await browser.$(S.breadcrumb);
     const bcText = await bc.getText();
-    // Breadcrumb shows: workspaceTitle / chapterName / fileName
-    // It contains separators and content
-    expect(bcText).toContain('/');
+    // 面包屑必须包含 workspace 标题（fixture 标题为 "E2E测试文档"）
+    expect(bcText).toContain('E2E测试文档');
 
     const sb = await browser.$(S.statusBar);
     const sbText = await sb.getText();

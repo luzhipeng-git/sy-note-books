@@ -219,7 +219,7 @@ describe('导出: 配置选项', () => {
 describe('导出: 执行和进度', () => {
   afterEach(cleanupExport);
 
-  it('点击"开始导出"后进入进度或成功状态', async () => {
+  it('点击"开始导出"后进入进度状态（进度条可见）', async () => {
     await openWorkspace();
     await openExportDialog();
 
@@ -236,17 +236,18 @@ describe('导出: 执行和进度', () => {
         if (b.textContent?.trim() === txt) { (b as HTMLElement).click(); return; }
       }
     }, T.startExport);
-    await browser.pause(1000);
 
-    // Either progress bar or success result should appear
-    // (IPC stub may complete instantly, skipping the progress animation)
+    // 导出开始后应进入 progress 步骤（进度条出现）
+    // IPC 可能很快完成跳到 success，所以先等 progress 或 success 任一出现
+    const resultIcon = await browser.$(S.exResultIcon);
     const progressBar = await browser.$(S.exProgressBar);
-    const successIcon = await browser.$('.export-result-icon');
-    const hasProgress = await progressBar.isExisting();
-    const hasSuccess = await successIcon.isExisting();
-    expect(hasProgress || hasSuccess).toBe(true);
+    await Promise.race([
+      progressBar.waitForExist({ timeout: 5000 }),
+      resultIcon.waitForExist({ timeout: 5000 }),
+    ]);
 
-    if (hasProgress) {
+    // 如果还在进度阶段，验证进度条有实际内容
+    if (await progressBar.isExisting()) {
       const fill = await browser.$(S.exProgressFill);
       await fill.waitForExist({ timeout: 3000 });
     }

@@ -119,7 +119,7 @@ pub fn export_chm(
     // Write in GBK encoding: chmcmd reads INI files using system ANSI codepage.
     // On Chinese Windows this is GBK (CP936). GBK encoding ensures Chinese title
     // displays correctly in the CHM title bar and TOC.
-    let hhp = generate_hhp(&meta.title, &default_topic, &file_list);
+    let hhp = generate_hhp(&meta.title, &default_topic, &file_list, &meta.language);
     let (hhc_gbk, _, _) = GBK.encode(&hhp);
     fs::write(output_dir.join("project.hhp"), hhc_gbk.as_ref())
         .map_err(|e| format!("写入 project.hhp 失败：{e}"))?;
@@ -214,7 +214,7 @@ pub fn export_pdf_file_html(
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_else(|| "未命名".to_string())
         });
-    let author = author_override.unwrap_or("").to_string();
+    let _author = author_override.unwrap_or("").to_string();
 
     let html = format!(
         r##"<!DOCTYPE html>
@@ -364,6 +364,103 @@ pub fn copy_export_output(src: &Path, dst: &Path) -> Result<(), String> {
         copy_dir_recursive(src, &dst_dir)?;
     }
     Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Export version management (§2.7.1)
+// ═══════════════════════════════════════════════════════════════
+//
+// Each export type (chm / nginx) keeps its own version counter under
+// `{workspace}/dist/{type}-v{N}`. Only the most recent KEEP_VERSIONS are
+// retained; older ones are pruned when a new version is produced.
+// Version numbering is per-type and independent, so exporting a new CHM
+// does not affect nginx versions and vice versa.
+
+const KEEP_VERSIONS: usize = 3;
+
+/// Scan `{dist_dir}` for `{export_type}-v{N}` directories and return the next
+/// version number (max existing + 1, or 1 if none exist).
+pub fn next_export_version(dist_dir: &Path, export_type: &str) -> u32 {
+    let prefix = format!("{}-v", export_type);
+    let mut max_num: u32 = 0;
+    if let Ok(entries) = fs::read_dir(dist_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with(&prefix) {
+                if let Ok(n) = name[prefix.len()..].parse::<u32>() {
+                    max_num = max_num.max(n);
+                }
+            }
+        }
+    }
+    max_num + 1
+}
+
+/// Delete the oldest `{export_type}-v{N}` directories, keeping only the most
+/// recent `KEEP_VERSIONS`. Other types and non-version directories are left
+/// untouched.
+pub fn prune_export_versions(dist_dir: &Path, export_type: &str) -> Result<u32, String> {
+    let prefix = format!("{}-v", export_type);
+    let mut versions: Vec<(u32, std::path::PathBuf)> = Vec::new();
+
+    if let Ok(entries) = fs::read_dir(dist_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with(&prefix) {
+                if let Ok(n) = name[prefix.len()..].parse::<u32>() {
+                    versions.push((n, path));
+                }
+            }
+        }
+    }
+
+    // Sort descending by version number; keep the newest KEEP_VERSIONS.
+    versions.sort_by(|a, b| b.0.cmp(&a.0));
+    let mut pruned = 0u32;
+    for (_, path) in versions.iter().skip(KEEP_VERSIONS) {
+        // path may be a dir (nginx) or a file (chm's output.chm lives inside a dir)
+        if path.is_dir() {
+            let _ = fs::remove_dir_all(path);
+        } else {
+            let _ = fs::remove_file(path);
+        }
+        pruned += 1;
+    }
+    Ok(pruned)
+}
+
+/// Remove `temp/` subdirectories older than `max_age_hours`.
+/// Used as the application-startup cleanup (§2.7.2, layer 3).
+pub fn cleanup_old_temp_dirs(temp_dir: &Path, max_age_hours: u64) -> Result<u32, String> {
+    if !temp_dir.exists() {
+        return Ok(0);
+    }
+    let now = std::time::SystemTime::now();
+    let max_age = std::time::Duration::from_secs(max_age_hours * 3600);
+    let mut removed = 0u32;
+
+    for entry in fs::read_dir(temp_dir).map_err(|e| format!("读取 temp 目录失败：{e}"))? {
+        let entry = entry.map_err(|e| format!("读取目录项失败：{e}"))?;
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let metadata = match entry.metadata() {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        // Use modification time as the age indicator
+        if let Ok(mtime) = metadata.modified() {
+            if let Ok(age) = now.duration_since(mtime) {
+                if age > max_age {
+                    let _ = fs::remove_dir_all(&path);
+                    removed += 1;
+                }
+            }
+        }
+    }
+    Ok(removed)
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -726,6 +823,7 @@ fn guess_mime_from_path(path: &Path) -> &'static str {
 struct WorkspaceExportMeta {
     title: String,
     author: String,
+    language: String,
 }
 
 fn read_workspace(
@@ -758,7 +856,7 @@ fn read_workspace(
     let entries = parse_summary(&summary_content);
 
     Ok((
-        WorkspaceExportMeta { title, author },
+        WorkspaceExportMeta { title, author, language: ws_meta.language },
         entries,
     ))
 }
@@ -1008,9 +1106,33 @@ fn chm_page_html(title: &str, content: &str) -> String {
     )
 }
 
-fn generate_hhp(title: &str, default_topic: &str, file_list: &[String]) -> String {
+/// Map an RFC 3066 language tag (e.g. "zh-CN", "en", "en-US") to the
+/// CHM Language LCID hex code used in the .hhp [OPTIONS] section.
+/// Falls back to 0x0409 (English / United States) for unknown tags.
+fn language_to_chm_lcid(language: &str) -> &'static str {
+    match language.to_lowercase().as_str() {
+        // Chinese variants
+        "zh-cn" | "zh-hans" | "zh" => "0x0804",   // Simplified Chinese (PRC)
+        "zh-tw" | "zh-hk" | "zh-hant" => "0x0404", // Traditional Chinese (Taiwan)
+        // English variants
+        "en" | "en-us" => "0x0409",                 // English (United States)
+        "en-gb" => "0x0809",                        // English (United Kingdom)
+        // Japanese / Korean
+        "ja" | "ja-jp" => "0x0411",
+        "ko" | "ko-kr" => "0x0412",
+        // Other common
+        "fr" | "fr-fr" => "0x040C",
+        "de" | "de-de" => "0x0407",
+        "es" | "es-es" => "0x040A",
+        "ru" | "ru-ru" => "0x0419",
+        _ => "0x0409",                              // Default: English
+    }
+}
+
+fn generate_hhp(title: &str, default_topic: &str, file_list: &[String], language: &str) -> String {
     // Sanitize title: remove newlines to prevent INI injection
     let safe_title = title.lines().next().unwrap_or("Untitled");
+    let lcid = language_to_chm_lcid(language);
 
     let mut files_section = String::new();
     for f in file_list {
@@ -1026,12 +1148,13 @@ fn generate_hhp(title: &str, default_topic: &str, file_list: &[String]) -> Strin
          Default topic={default_topic}\n\
          Display compile progress=No\n\
          Full-text search=Yes\n\
-         Language=0x0804\n\
+         Language={lcid}\n\
          Title={safe_title}\n\n\
          [FILES]\n\
          {files}",
         safe_title = safe_title,
         default_topic = default_topic,
+        lcid = lcid,
         files = files_section,
     )
 }
@@ -1153,8 +1276,58 @@ fn svg_to_png(svg_path: &Path, png_path: &Path) -> Result<(), String> {
 }
 
 /// In HTML content, replace .svg image references with .png.
+/// Only rewrites `<img src="...svg">` / `<img src='...svg'>` attributes — leaves
+/// other occurrences of ".svg" (e.g. in code blocks, URLs, prose) untouched.
 fn replace_svg_with_png(html: &str) -> String {
-    html.replace(".svg", ".png")
+    let mut result = String::with_capacity(html.len());
+    // Search for either quote style of the src attribute marker.
+    // We scan byte-by-byte for `src=` then peek the following quote char.
+    let bytes = html.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if i + 4 <= bytes.len() && &bytes[i..i + 4] == b"src=" {
+            let quote = bytes.get(i + 4).copied();
+            match quote {
+                Some(b'"') | Some(b'\'') => {
+                    let q = quote.unwrap() as char;
+                    // Emit `src=` + quote
+                    result.push_str("src=");
+                    result.push(q);
+                    let after = &html[i + 5..];
+                    match after.find(q) {
+                        Some(end) => {
+                            let val = &after[..end];
+                            if val.ends_with(".svg") {
+                                result.push_str(&val[..val.len() - 4]);
+                                result.push_str(".png");
+                            } else {
+                                result.push_str(val);
+                            }
+                            result.push(q);
+                            // Advance past the closing quote
+                            i = i + 5 + end + 1;
+                            continue;
+                        }
+                        None => {
+                            // No closing quote — append rest verbatim and stop
+                            result.push_str(after);
+                            return result;
+                        }
+                    }
+                }
+                _ => {
+                    result.push(bytes[i] as char);
+                    i += 1;
+                }
+            }
+        } else {
+            // push a single char safely (avoid splitting multibyte sequences)
+            let ch = html[i..].chars().next().unwrap();
+            result.push(ch);
+            i += ch.len_utf8();
+        }
+    }
+    result
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1819,11 +1992,57 @@ mod tests {
 
     #[test]
     fn generate_hhp_sanitizes_multiline_title() {
-        let hhp = generate_hhp("Good Title\nEVIL=INJECTED", "index.html", &[]);
+        let hhp = generate_hhp("Good Title\nEVIL=INJECTED", "index.html", &[], "zh-CN");
         assert!(hhp.contains("Good Title"), "first line should appear");
         assert!(
             !hhp.contains("EVIL=INJECTED"),
             "injected line should be stripped, got: {hhp}"
+        );
+    }
+
+    #[test]
+    fn generate_hhp_uses_workspace_language_zh_cn() {
+        let hhp = generate_hhp("测试", "index.html", &[], "zh-CN");
+        assert!(hhp.contains("Language=0x0804"), "zh-CN should map to 0x0804, got: {hhp}");
+    }
+
+    #[test]
+    fn generate_hhp_uses_workspace_language_en() {
+        let hhp = generate_hhp("Test", "index.html", &[], "en");
+        assert!(hhp.contains("Language=0x0409"), "en should map to 0x0409, got: {hhp}");
+    }
+
+    #[test]
+    fn generate_hhp_unknown_language_defaults_to_english() {
+        let hhp = generate_hhp("Test", "index.html", &[], "xx-YY");
+        assert!(hhp.contains("Language=0x0409"), "unknown should default to 0x0409, got: {hhp}");
+    }
+
+    #[test]
+    fn export_chm_uses_workspace_language_in_hhp() {
+        // End-to-end: export a workspace with language=en, verify the HHP uses English LCID
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("ws");
+        workspace::create_workspace(&ws, "English Docs", "author", Some("en")).unwrap();
+
+        let ch1 = ws.join("01-intro");
+        fs::create_dir_all(ch1.join("assets")).unwrap();
+        fs::write(ch1.join("index.md"), "# Intro\n\nWelcome.\n").unwrap();
+        fs::write(
+            ws.join("SUMMARY.md"),
+            "# English Docs\n- [Intro](01-intro/index.md)\n",
+        )
+        .unwrap();
+
+        let out = tmp.path().join("dist").join("chm-v1");
+        let result = export_chm(&ws, out.to_str().unwrap(), None, None, None, None);
+        assert!(result.is_ok(), "export_chm failed: {:?}", result);
+
+        let hhp_bytes = fs::read(out.join("project.hhp")).unwrap();
+        let (hhp, _, _) = encoding_rs::GBK.decode(&hhp_bytes);
+        assert!(
+            hhp.contains("Language=0x0409"),
+            "English workspace should use 0x0409, got: {hhp}"
         );
     }
 
@@ -1853,5 +2072,137 @@ mod tests {
         );
         assert!(hhc.contains("子页面"), "child page should appear");
         assert!(hhc.contains("ch/page.html"), "child path should be converted to .html");
+    }
+
+    // ── replace_svg_with_png (only img src) ─────────────────────
+
+    #[test]
+    fn replace_svg_with_png_rewrites_double_quoted_img_src() {
+        let html = r#"<img src="diagram.svg">"#;
+        assert_eq!(replace_svg_with_png(html), r#"<img src="diagram.png">"#);
+    }
+
+    #[test]
+    fn replace_svg_with_png_rewrites_single_quoted_img_src() {
+        let html = r#"<img src='diagram.svg'>"#;
+        assert_eq!(replace_svg_with_png(html), r#"<img src='diagram.png'>"#);
+    }
+
+    #[test]
+    fn replace_svg_with_png_leaves_non_img_svg_untouched() {
+        // ".svg" appearing in prose / code should NOT be replaced
+        let html = r#"<p>See file.svg and assets/icon.svg for details.</p>"#;
+        assert_eq!(replace_svg_with_png(html), html);
+    }
+
+    #[test]
+    fn replace_svg_with_png_leaves_non_svg_src_untouched() {
+        let html = r#"<img src="photo.png">"#;
+        assert_eq!(replace_svg_with_png(html), html);
+    }
+
+    #[test]
+    fn replace_svg_with_png_rewrites_multiple_imgs() {
+        let html = r#"<img src="a.svg"><img src="b.svg"><img src="c.png">"#;
+        let out = replace_svg_with_png(html);
+        assert!(out.contains(r#"src="a.png""#));
+        assert!(out.contains(r#"src="b.png""#));
+        assert!(out.contains(r#"src="c.png""#), "non-svg should be untouched");
+    }
+
+    // ── export version management ───────────────────────────────
+
+    #[test]
+    fn next_export_version_starts_at_1_when_empty() {
+        let tmp = TempDir::new().unwrap();
+        assert_eq!(next_export_version(tmp.path(), "chm"), 1);
+    }
+
+    #[test]
+    fn next_export_version_increments_max() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join("chm-v1")).unwrap();
+        fs::create_dir_all(tmp.path().join("chm-v3")).unwrap();
+        // max existing is 3 → next is 4
+        assert_eq!(next_export_version(tmp.path(), "chm"), 4);
+    }
+
+    #[test]
+    fn next_export_version_independent_per_type() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join("chm-v5")).unwrap();
+        fs::create_dir_all(tmp.path().join("nginx-v2")).unwrap();
+        // chm and nginx track separately
+        assert_eq!(next_export_version(tmp.path(), "chm"), 6);
+        assert_eq!(next_export_version(tmp.path(), "nginx"), 3);
+    }
+
+    #[test]
+    fn prune_export_versions_keeps_last_three() {
+        let tmp = TempDir::new().unwrap();
+        // Create 5 chm versions
+        for n in 1..=5 {
+            fs::create_dir_all(tmp.path().join(format!("chm-v{n}"))).unwrap();
+        }
+        // And some nginx versions (should be untouched)
+        fs::create_dir_all(tmp.path().join("nginx-v1")).unwrap();
+        fs::create_dir_all(tmp.path().join("nginx-v2")).unwrap();
+
+        let pruned = prune_export_versions(tmp.path(), "chm").unwrap();
+        assert_eq!(pruned, 2, "should remove the 2 oldest chm versions");
+
+        // v3, v4, v5 should remain; v1, v2 should be gone
+        assert!(tmp.path().join("chm-v3").exists());
+        assert!(tmp.path().join("chm-v4").exists());
+        assert!(tmp.path().join("chm-v5").exists());
+        assert!(!tmp.path().join("chm-v1").exists());
+        assert!(!tmp.path().join("chm-v2").exists());
+
+        // nginx versions untouched
+        assert!(tmp.path().join("nginx-v1").exists());
+        assert!(tmp.path().join("nginx-v2").exists());
+    }
+
+    #[test]
+    fn prune_export_versions_noop_when_under_limit() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join("chm-v1")).unwrap();
+        fs::create_dir_all(tmp.path().join("chm-v2")).unwrap();
+
+        let pruned = prune_export_versions(tmp.path(), "chm").unwrap();
+        assert_eq!(pruned, 0);
+        assert!(tmp.path().join("chm-v1").exists());
+        assert!(tmp.path().join("chm-v2").exists());
+    }
+
+    #[test]
+    fn prune_export_versions_nonexistent_dir_ok() {
+        // dist/ doesn't exist → no error, prunes nothing
+        let pruned = prune_export_versions(Path::new("/no/such/dist/dir/xyz"), "chm").unwrap();
+        assert_eq!(pruned, 0);
+    }
+
+    #[test]
+    fn full_version_lifecycle_simulation() {
+        // Simulate exporting 5 times: each export picks next version + prunes old.
+        let tmp = TempDir::new().unwrap();
+        let dist = tmp.path().join("dist");
+        fs::create_dir_all(&dist).unwrap();
+
+        for expected_new in 1..=5 {
+            let next = next_export_version(&dist, "chm");
+            assert_eq!(next, expected_new, "export #{} should pick v{}", expected_new, expected_new);
+            // "Produce" the export
+            fs::create_dir_all(dist.join(format!("chm-v{next}"))).unwrap();
+            // Prune after each export
+            prune_export_versions(&dist, "chm").unwrap();
+        }
+
+        // After 5 exports, only v3, v4, v5 should remain
+        assert!(!dist.join("chm-v1").exists());
+        assert!(!dist.join("chm-v2").exists());
+        assert!(dist.join("chm-v3").exists());
+        assert!(dist.join("chm-v4").exists());
+        assert!(dist.join("chm-v5").exists());
     }
 }

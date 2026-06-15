@@ -72,5 +72,12 @@ export default defineConfig(async () => ({
     setupFiles: ["./src/test/setup.ts"],
     css: false,
     exclude: ["node_modules", "e2e", "e2e-tests"],
+    // Force NODE_ENV=test so React loads its development build, which exports
+    // the `act` API. If the shell has NODE_ENV=production, React loads its
+    // production build (no `act` export), and @testing-library/react's render()
+    // throws "TypeError: React.act is not a function".
+    env: {
+      NODE_ENV: "test",
+    },
   },
 }));

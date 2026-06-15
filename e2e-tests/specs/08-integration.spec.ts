@@ -203,9 +203,9 @@ describe('联动: Editor → Whiteboard → Editor', () => {
     // activeFilePath must be set after save-and-insert
     expect(activeFilePath).not.toBeNull();
     const fileContent = await ipcReadFile(`${TEST_WS}/${activeFilePath}`);
-    // 通过 IPC 验证文件内容是合法 markdown（含标题或文本内容）
-    expect(fileContent.length).toBeGreaterThan(0);
-    expect(fileContent).toMatch(/\S/);
+    // 白板保存并插入后，文件内容必须包含图片引用（![img-NNN](./assets/...svg)）
+    // 而非仅检查「文件非空」
+    expect(fileContent).toMatch(/!\[img-\d+\]\(\.\/assets\/[^)]+\.svg\)/);
   });
 
   it('白板模式下键盘快捷键 Ctrl+Shift+F 不触发搜索 UI', async () => {
@@ -275,8 +275,8 @@ describe('联动: 多文件导航', () => {
     expect(file1Path).toMatch(/\.md$/);
 
     const file1Content = await ipcReadFile(`${TEST_WS}/${file1Path}`);
-    // File content should be valid markdown
-    expect(file1Content).toMatch(/\S/);
+    // 文件内容必须是合法的 markdown（以 # 标题开头）
+    expect(file1Content).toMatch(/^#\s/);
 
     // 切换到第二个文件
     await browser.execute(() => {
@@ -292,7 +292,8 @@ describe('联动: 多文件导航', () => {
     expect(file2Path).not.toBe(file1Path);
 
     const file2Content = await ipcReadFile(`${TEST_WS}/${file2Path}`);
-    expect(file2Content).toMatch(/\S/);
+    // 文件内容必须是合法的 markdown（以 # 标题开头）
+    expect(file2Content).toMatch(/^#\s/);
   });
 
   it('通过搜索结果切换文件，编辑器正确加载', async () => {

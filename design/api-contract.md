@@ -1,6 +1,6 @@
 # IPC 接口契约
 
-> 版本: 1.0 | 日期: 2026-05-24
+> 版本: 1.1 | 日期: 2026-06-15
 >
 > 前后端 IPC 类型定义的单一事实来源。前后端必须以此文档为准。
 
@@ -224,9 +224,16 @@
 
 | 端 | 定义 |
 |----|------|
-| TS Request | `{ workspacePath: string; outputPath: string; chapter?: string }` |
+| TS Request | `{ workspacePath: string; outputPath: string; chapter?: string; title?: string; author?: string }` |
 | TS Response | `string`（输出文件路径） |
-| Rust 签名 | `fn export_chm(workspace_path: String, output_path: String, chapter: Option<String>) -> Result<String, String>` |
+| Rust 签名 | `fn export_chm(app: AppHandle, workspace_path: String, output_path: String, chapter: Option<String>, title: Option<String>, author: Option<String>) -> Result<String, String>` |
+
+**行为**：
+1. 读取 workspace.json + SUMMARY.md
+2. 生成 HTML、.hhp（GBK 编码）、.hhc
+3. CHM Language LCID 根据 workspace.json 的 `language` 字段映射（如 `zh-CN` → `0x0804`，`en` → `0x0409`）
+4. 调用 chmcmd（Free Pascal）或 hhc.exe（Windows）编译
+5. 返回 .chm 文件路径
 
 ---
 
@@ -236,21 +243,93 @@
 
 | 端 | 定义 |
 |----|------|
-| TS Request | `{ workspacePath: string; outputPath: string; chapter?: string }` |
+| TS Request | `{ workspacePath: string; outputPath: string; chapter?: string; title?: string; author?: string }` |
 | TS Response | `string`（输出目录路径） |
-| Rust 签名 | `fn export_nginx(workspace_path: String, output_path: String, chapter: Option<String>) -> Result<String, String>` |
+| Rust 签名 | `fn export_nginx(workspace_path: String, output_path: String, chapter: Option<String>, title: Option<String>, author: Option<String>) -> Result<String, String>` |
 
 ---
 
 ### 5.3 export_pdf
 
-单文件 PDF 导出（触发 WebView 打印对话框）。
+校验单文件路径存在（旧版触发 WebView 打印，当前实现仅做存在性校验）。
 
 | 端 | 定义 |
 |----|------|
 | TS Request | `{ filePath: string }` |
 | TS Response | `void` |
 | Rust 签名 | `fn export_pdf(file_path: String) -> Result<(), String>` |
+
+---
+
+### 5.4 export_pdf_html
+
+生成多章节合并的打印用 HTML（含封面页）。
+
+| 端 | 定义 |
+|----|------|
+| TS Request | `{ workspacePath: string; chapter?: string; title?: string; author?: string }` |
+| TS Response | `string`（HTML 字符串） |
+| Rust 签名 | `fn export_pdf_html(workspace_path: String, chapter: Option<String>, title: Option<String>, author: Option<String>) -> Result<String, String>` |
+
+---
+
+### 5.5 export_pdf_file_html
+
+生成单文件打印用 HTML（无封面页，图片内嵌为 data URI）。
+
+| 端 | 定义 |
+|----|------|
+| TS Request | `{ workspacePath: string; filePath: string; title?: string; author?: string }` |
+| TS Response | `string`（HTML 字符串） |
+| Rust 签名 | `fn export_pdf_file_html(workspace_path: String, file_path: String, title: Option<String>, author: Option<String>) -> Result<String, String>` |
+
+---
+
+### 5.6 export_pdf_file
+
+原生 Rust PDF 导出（genpdf-chinese，绕过 WebView 打印）。
+
+| 端 | 定义 |
+|----|------|
+| TS Request | `{ workspacePath: string; filePath: string; outputPath: string; title?: string; author?: string }` |
+| TS Response | `void` |
+| Rust 签名 | `fn export_pdf_file(workspace_path: String, file_path: String, output_path: String, title: Option<String>, author: Option<String>) -> Result<(), String>` |
+
+---
+
+### 5.7 copy_export_output
+
+将导出产物复制到用户选择的目标路径。
+
+| 端 | 定义 |
+|----|------|
+| TS Request | `{ src: string; dst: string }` |
+| TS Response | `void` |
+| Rust 签名 | `fn copy_export_output(src: String, dst: String) -> Result<(), String>` |
+
+---
+
+### 5.8 prepare_export_output
+
+计算下一次导出的版本化输出路径（`dist/{type}-v{N}`）。
+
+| 端 | 定义 |
+|----|------|
+| TS Request | `{ workspacePath: string; exportType: string }` |
+| TS Response | `string`（输出路径） |
+| Rust 签名 | `fn prepare_export_output(workspace_path: String, export_type: String) -> Result<String, String>` |
+
+---
+
+### 5.9 prune_export_versions
+
+删除超出保留数量（最近 3 个）的旧版本，按导出类型独立管理。
+
+| 端 | 定义 |
+|----|------|
+| TS Request | `{ workspacePath: string; exportType: string }` |
+| TS Response | `number`（删除的版本数） |
+| Rust 签名 | `fn prune_export_versions(workspace_path: String, export_type: String) -> Result<u32, String>` |
 
 ---
 
@@ -359,6 +438,7 @@ interface Settings {
   recentWorkspaces: RecentWorkspace[];
   theme: 'light' | 'dark';
   sidebarWidth: number;
+  sidebarCollapsed: boolean;
 }
 
 // === Frontend-only ===
@@ -481,6 +561,8 @@ pub struct Settings {
     pub theme: String,
     #[serde(default = "default_sidebar_width")]
     pub sidebar_width: u32,
+    #[serde(default)]
+    pub sidebar_collapsed: bool,
 }
 
 fn default_theme() -> String { "light".to_string() }
@@ -510,5 +592,11 @@ fn default_sidebar_width() -> u32 { 260 }
 | 15 | export_chm | 5 | Export |
 | 16 | export_nginx | 5 | Export |
 | 17 | export_pdf | 5 | Export |
-| 18 | get_settings | 1 | Settings |
-| 19 | save_settings | 1 | Settings |
+| 18 | export_pdf_html | 5 | Export |
+| 19 | export_pdf_file_html | 5 | Export |
+| 20 | export_pdf_file | 5 | Export |
+| 21 | copy_export_output | 5 | Export |
+| 22 | prepare_export_output | 5 | Export |
+| 23 | prune_export_versions | 5 | Export |
+| 24 | get_settings | 1 | Settings |
+| 25 | save_settings | 1 | Settings |

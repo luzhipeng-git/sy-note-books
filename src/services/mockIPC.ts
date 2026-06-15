@@ -290,6 +290,24 @@ const mockData: Record<string, (args?: Record<string, unknown>) => unknown> = {
     return undefined;
   },
 
+  reorder_chapters: (args) => {
+    const workspacePath = (args?.workspacePath as string) ?? '/mock/workspace';
+    const chapterOrders = (args?.chapterOrders as Array<{ path: string; newOrder: number }>) ?? [];
+    const ws = getWorkspace(workspacePath);
+
+    // Reorder summary entries to match the requested order.
+    // Map path → newOrder; entries not mentioned keep their position (sorted last).
+    const orderMap = new Map(chapterOrders.map((o) => [o.path, o.newOrder]));
+    ws.summary.sort((a, b) => {
+      const aDir = a.path.replace('/index.md', '');
+      const bDir = b.path.replace('/index.md', '');
+      const aOrder = orderMap.get(aDir) ?? orderMap.get(a.path) ?? Number.MAX_SAFE_INTEGER;
+      const bOrder = orderMap.get(bDir) ?? orderMap.get(b.path) ?? Number.MAX_SAFE_INTEGER;
+      return aOrder - bOrder;
+    });
+    return undefined;
+  },
+
   get_next_image_index: (args) => {
     const docName = (args?.docName as string) ?? 'index';
     const existing = mockAssetNames.filter((n) => n.startsWith(`${docName}-img-`));
@@ -332,6 +350,18 @@ const mockData: Record<string, (args?: Record<string, unknown>) => unknown> = {
   copy_export_output: () => {
     console.log('[mockIPC] copy_export_output: simulated');
     return undefined;
+  },
+
+  prepare_export_output: (args) => {
+    const workspacePath = (args?.workspacePath as string) ?? '/mock/workspace';
+    const exportType = (args?.exportType as string) ?? 'chm';
+    // Mock: always return -v1 in dev mode (no real version scanning)
+    return `${workspacePath}/dist/${exportType}-v1`;
+  },
+
+  prune_export_versions: () => {
+    // Mock: no-op in dev mode
+    return 0;
   },
 
   read_all_md_files: () => [

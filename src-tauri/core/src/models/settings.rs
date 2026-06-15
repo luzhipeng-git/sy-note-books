@@ -17,6 +17,8 @@ pub struct Settings {
     pub theme: String,
     #[serde(default = "default_sidebar_width")]
     pub sidebar_width: u32,
+    #[serde(default)]
+    pub sidebar_collapsed: bool,
 }
 
 fn default_theme() -> String {
@@ -33,6 +35,7 @@ impl Default for Settings {
             recent_workspaces: Vec::new(),
             theme: default_theme(),
             sidebar_width: default_sidebar_width(),
+            sidebar_collapsed: false,
         }
     }
 }

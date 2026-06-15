@@ -125,7 +125,15 @@ export const useExportStore = create<ExportState>()((set, get) => ({
 
     try {
       const chapter = scope === 'chapter' ? selectedChapter : undefined;
-      const outputPath = `${workspacePath}/dist/${exportType}-v1`;
+
+      // Compute next versioned output path and prune old versions beyond the
+      // retention limit (§2.7.1: each type keeps its own version counter).
+      // The actual prune of *old* versions happens after a successful export,
+      // so a failed export never deletes existing good versions.
+      const outputPath = await invokeIPC<string>('prepare_export_output', {
+        workspacePath,
+        exportType,
+      });
 
       const command = exportType === 'chm' ? 'export_chm' : 'export_nginx';
 
@@ -155,6 +163,12 @@ export const useExportStore = create<ExportState>()((set, get) => ({
 
       // Wait for IPC to complete (may already be done)
       const result = await ipcPromise;
+
+      // Prune old versions now that the new one is safely written.
+      await invokeIPC('prune_export_versions', { workspacePath, exportType }).catch(() => {
+        // Pruning is best-effort — don't fail the export if cleanup errors.
+      });
+
       set({ progress: 100, progressText: '完成！', progressDetail: '清理 temp/ 目录' });
       set({ step: 'success', outputPath: result });
     } catch (error) {

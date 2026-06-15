@@ -14,6 +14,10 @@ WS_DIR="${1:-/tmp/synote-test-workspace}"
 
 echo "[fixture] Creating test workspace at: $WS_DIR"
 
+# Clean any previous fixture (e.g. leftover dist/ from prior test runs) so the
+# workspace is always in a known state.
+rm -rf "$WS_DIR"
+
 # 创建目录结构
 mkdir -p "$WS_DIR"
 mkdir -p "$WS_DIR/01-getting-started"

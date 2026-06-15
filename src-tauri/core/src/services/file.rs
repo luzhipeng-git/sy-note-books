@@ -1,10 +1,25 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Component, Path};
 
 use crate::models::workspace::MdFileContent;
 
+/// Reject paths containing parent-directory (`..`) traversal components.
+/// This prevents `../` sequences in a relative path from escaping the intended
+/// directory when the caller joins it with a workspace root. Absolute paths
+/// that legitimately resolve outside are fine; this only catches the explicit
+/// `..` escape vector.
+///
+/// Returns Ok(()) if the path is safe, Err otherwise.
+fn reject_path_traversal(path: &Path) -> Result<(), String> {
+    if path.components().any(|c| matches!(c, Component::ParentDir)) {
+        return Err(format!("路径包含非法的 .. 跳转: {}", path.display()));
+    }
+    Ok(())
+}
+
 /// Read file text content.
 pub fn read_file(path: &Path) -> Result<String, String> {
+    reject_path_traversal(path)?;
     if !path.exists() {
         return Err(format!("文件不存在: {}", path.display()));
     }
@@ -13,10 +28,71 @@ pub fn read_file(path: &Path) -> Result<String, String> {
 
 /// Save text content to file. Creates parent directories if needed.
 pub fn save_file(path: &Path, content: &str) -> Result<(), String> {
+    reject_path_traversal(path)?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
     }
     fs::write(path, content).map_err(|e| format!("写入文件失败: {}", e))
+}
+
+/// File metadata for verification (exists, size, is_file, is_dir).
+/// Used by E2E tests to verify export artifacts without reading binary content.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileStat {
+    pub exists: bool,
+    pub size: u64,
+    pub is_file: bool,
+    pub is_dir: bool,
+}
+
+/// Get file metadata (exists, size, type) without reading content.
+/// Returns { exists: false, ... } if the path doesn't exist (no error).
+pub fn stat_file(path: &Path) -> Result<FileStat, String> {
+    reject_path_traversal(path)?;
+    if !path.exists() {
+        return Ok(FileStat { exists: false, size: 0, is_file: false, is_dir: false });
+    }
+    let metadata = fs::metadata(path).map_err(|e| format!("读取文件信息失败: {}", e))?;
+    Ok(FileStat {
+        exists: true,
+        size: metadata.len(),
+        is_file: metadata.is_file(),
+        is_dir: metadata.is_dir(),
+    })
+}
+
+/// Read the first N bytes of a file as a hex string.
+/// Used for magic-byte verification (e.g. ITSF for CHM, %PDF- for PDF).
+/// Returns empty string if the file doesn't exist or is smaller than `bytes`.
+pub fn read_file_head(path: &Path, bytes: usize) -> Result<String, String> {
+    reject_path_traversal(path)?;
+    use std::io::Read;
+    let mut file = fs::File::open(path).map_err(|e| format!("打开文件失败: {}", e))?;
+    let mut buf = vec![0u8; bytes];
+    let n = file.read(&mut buf).map_err(|e| format!("读取文件失败: {}", e))?;
+    buf.truncate(n);
+    Ok(buf.iter().map(|b| format!("{:02x}", b)).collect())
+}
+
+/// Read the last N bytes of a file as a UTF-8 string (lossy).
+/// Used for trailer verification (e.g. %%EOF at the end of PDF files).
+/// Returns empty string if the file doesn't exist or is empty.
+pub fn read_file_tail(path: &Path, bytes: usize) -> Result<String, String> {
+    reject_path_traversal(path)?;
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = fs::File::open(path).map_err(|e| format!("打开文件失败: {}", e))?;
+    let metadata = file.metadata().map_err(|e| format!("读取文件信息失败: {}", e))?;
+    let file_size = metadata.len() as usize;
+    if file_size == 0 {
+        return Ok(String::new());
+    }
+    let start = file_size.saturating_sub(bytes);
+    file.seek(SeekFrom::Start(start as u64)).map_err(|e| format!("定位文件失败: {}", e))?;
+    let read_size = file_size - start;
+    let mut buf = vec![0u8; read_size];
+    file.read_exact(&mut buf).map_err(|e| format!("读取文件失败: {}", e))?;
+    Ok(String::from_utf8_lossy(&buf).to_string())
 }
 
 /// Read all .md files in a workspace directory recursively.
@@ -261,5 +337,137 @@ mod tests {
         let result = read_all_md_files(&file_path);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("路径不是目录"));
+    }
+
+    // ─── path traversal rejection ──────────────────────────────
+
+    #[test]
+    fn test_read_file_rejects_parent_dir_traversal() {
+        // Even if the target exists, an explicit .. component is rejected.
+        let tmp = tempfile::tempdir().unwrap();
+        let target = tmp.path().join("..").join("passwd");
+        let result = read_file(&target);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains(".."));
+    }
+
+    #[test]
+    fn test_save_file_rejects_parent_dir_traversal() {
+        let tmp = tempfile::tempdir().unwrap();
+        let target = tmp.path().join("../../etc/evil.md");
+        let result = save_file(&target, "malicious");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains(".."));
+    }
+
+    #[test]
+    fn test_save_file_allows_normal_nested_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let normal = tmp.path().join("chapter").join("note.md");
+        save_file(&normal, "ok").unwrap();
+        assert_eq!(fs::read_to_string(&normal).unwrap(), "ok");
+    }
+
+    // ─── stat_file ─────────────────────────────────────────────
+
+    #[test]
+    fn test_stat_file_existing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("test.bin");
+        fs::write(&file, b"hello world").unwrap();
+
+        let stat = stat_file(&file).unwrap();
+        assert!(stat.exists);
+        assert!(stat.is_file);
+        assert!(!stat.is_dir);
+        assert_eq!(stat.size, 11);
+    }
+
+    #[test]
+    fn test_stat_file_nonexistent() {
+        let stat = stat_file(Path::new("/tmp/no-such-file-12345")).unwrap();
+        assert!(!stat.exists);
+        assert_eq!(stat.size, 0);
+    }
+
+    #[test]
+    fn test_stat_file_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let stat = stat_file(tmp.path()).unwrap();
+        assert!(stat.exists);
+        assert!(!stat.is_file);
+        assert!(stat.is_dir);
+    }
+
+    // ─── read_file_head ────────────────────────────────────────
+
+    #[test]
+    fn test_read_file_head_pdf_magic() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("test.pdf");
+        fs::write(&file, b"%PDF-1.4\nrest of content").unwrap();
+
+        let head = read_file_head(&file, 8).unwrap();
+        // %PDF-1.4 → hex: 25 50 44 46 2d 31 2e 34
+        assert_eq!(head, "255044462d312e34");
+    }
+
+    #[test]
+    fn test_read_file_head_itsf_magic() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("test.chm");
+        // ITSF signature: 49 54 53 46
+        fs::write(&file, b"ITSF\x03\x00\x00\x00rest").unwrap();
+
+        let head = read_file_head(&file, 4).unwrap();
+        assert_eq!(head, "49545346"); // "ITSF" in hex
+    }
+
+    #[test]
+    fn test_read_file_head_smaller_than_requested() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("small.txt");
+        fs::write(&file, b"hi").unwrap();
+
+        let head = read_file_head(&file, 16).unwrap();
+        assert_eq!(head, "6869"); // "hi" — only 2 bytes returned
+    }
+
+    #[test]
+    fn test_read_file_head_nonexistent() {
+        let result = read_file_head(Path::new("/tmp/no-such-12345"), 8);
+        assert!(result.is_err());
+    }
+
+    // ─── read_file_tail ────────────────────────────────────────
+
+    #[test]
+    fn test_read_file_tail_pdf_eof() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("test.pdf");
+        fs::write(&file, b"%PDF-1.4\n...content...\n%%EOF").unwrap();
+
+        let tail = read_file_tail(&file, 32).unwrap();
+        assert!(tail.contains("%%EOF"), "tail should contain %%EOF, got: {tail}");
+    }
+
+    #[test]
+    fn test_read_file_tail_smaller_than_requested() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("small.txt");
+        fs::write(&file, b"hello").unwrap();
+
+        let tail = read_file_tail(&file, 32).unwrap();
+        assert_eq!(tail, "hello"); // entire file returned
+    }
+
+    #[test]
+    fn test_read_file_tail_empty_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("empty.txt");
+        fs::write(&file, "").unwrap();
+
+        let tail = read_file_tail(&file, 32).unwrap();
+        assert_eq!(tail, "");
     }
 }

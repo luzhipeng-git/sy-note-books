@@ -5,6 +5,7 @@ import type {
   FileTreeNode,
   WhiteboardAnchor,
   RepairAction,
+  ChapterOrder,
 } from '../types/workspace';
 import type { EditorType } from '../types/editor';
 import { invokeIPC } from '../services/ipc';
@@ -15,6 +16,7 @@ import { useSettingsStore } from './settingsStore';
 interface WorkspaceState {
   rootPath: string | null;
   workspaceMeta: WorkspaceMeta | null;
+  summary: SummaryNode[];
   fileTree: FileTreeNode[];
   expandedFolders: Set<string>;
   activeFilePath: string | null;
@@ -35,6 +37,7 @@ interface WorkspaceState {
   createPage: (chapterPath: string, title: string) => Promise<void>;
   renameNode: (path: string, newTitle: string) => Promise<void>;
   deleteNode: (path: string) => Promise<void>;
+  reorderChapters: (chapterOrders: ChapterOrder[]) => Promise<void>;
   refreshTree: () => Promise<void>;
   clearError: () => void;
 }
@@ -71,6 +74,7 @@ function summaryToTree(nodes: SummaryNode[]): FileTreeNode[] {
 export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
   rootPath: null,
   workspaceMeta: null,
+  summary: [],
   fileTree: [],
   expandedFolders: new Set(),
   activeFilePath: null,
@@ -95,6 +99,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
         // Normalize to forward slashes for consistent path construction
         rootPath: info.rootPath.replace(/\\/g, '/'),
         workspaceMeta: info.workspaceMeta,
+        summary: info.summary,
         fileTree: summaryToTree(info.summary),
         expandedFolders: new Set(
           info.summary.map((n) => n.path.replace(/\/index\.md$/, '')),
@@ -129,6 +134,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
       set({
         rootPath: info.rootPath.replace(/\\/g, '/'),
         workspaceMeta: info.workspaceMeta,
+        summary: info.summary,
         fileTree: summaryToTree(info.summary),
         expandedFolders: new Set(),
         activeFilePath: null,
@@ -181,6 +187,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     set({
       rootPath: null,
       workspaceMeta: null,
+      summary: [],
       fileTree: [],
       expandedFolders: new Set(),
       activeFilePath: null,
@@ -269,6 +276,19 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     }
   },
 
+  reorderChapters: async (chapterOrders: ChapterOrder[]) => {
+    const rootPath = get().rootPath;
+    if (!rootPath || chapterOrders.length === 0) return;
+    try {
+      set({ errorMessage: null });
+      await invokeIPC('reorder_chapters', { workspacePath: rootPath, chapterOrders });
+      await get().refreshTree();
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      set({ errorMessage: msg || '排序失败' });
+    }
+  },
+
   refreshTree: async () => {
     const rootPath = get().rootPath;
     if (!rootPath) return;
@@ -280,6 +300,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
         repairs: RepairAction[];
       }>('open_workspace', { path: rootPath });
       set({
+        summary: info.summary,
         fileTree: summaryToTree(info.summary),
         workspaceMeta: info.workspaceMeta,
         repairs: info.repairs ?? [],
