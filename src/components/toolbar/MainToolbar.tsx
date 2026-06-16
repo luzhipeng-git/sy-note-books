@@ -8,12 +8,14 @@ import { useSearchStore } from '../../stores/searchStore';
 import { useExportStore } from '../../stores/exportStore';
 import { TableGridPicker } from '../editor/TableGridPicker';
 import { HeadingPicker } from '../editor/HeadingPicker';
+import { TocPanel } from '../editor/TocPanel';
 
 const act = (action: string) => useEditorStore.getState().vditorAction?.(action);
 
 export function MainToolbar() {
   const { theme, toggleTheme } = useSettingsStore();
   const { activeEditorType, activeFilePath, enterWhiteboard } = useWorkspaceStore();
+  const tocOpen = useEditorStore((s) => s.tocOpen);
 
   const [showHeadingPicker, setShowHeadingPicker] = useState(false);
   const [showTablePicker, setShowTablePicker] = useState(false);
@@ -21,6 +23,7 @@ export function MainToolbar() {
   const tableBtnRef = useRef<HTMLButtonElement>(null);
 
   if (activeEditorType === 'empty') return null;
+  const isMarkdown = activeEditorType === 'markdown';
 
   return (
     <div className="toolbar">
@@ -144,6 +147,22 @@ export function MainToolbar() {
 
       <div className="toolbar-spacer" />
 
+      {isMarkdown && (
+        <button
+          className={`toolbar-btn${tocOpen ? ' toolbar-btn--active' : ''}`}
+          title="目录"
+          onClick={() => useEditorStore.getState().toggleToc()}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="8" y1="6" x2="21" y2="6" />
+            <line x1="8" y1="12" x2="21" y2="12" />
+            <line x1="8" y1="18" x2="21" y2="18" />
+            <line x1="3" y1="6" x2="3.01" y2="6" />
+            <line x1="3" y1="12" x2="3.01" y2="12" />
+            <line x1="3" y1="18" x2="3.01" y2="18" />
+          </svg>
+        </button>
+      )}
       <button className="toolbar-btn" title="搜索 (Ctrl+Shift+F)" onClick={() => useSearchStore.getState().openGlobalSearch()}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <circle cx="11" cy="11" r="8" />
@@ -193,6 +212,8 @@ export function MainToolbar() {
         />,
         document.body,
       )}
+
+      {tocOpen && isMarkdown && createPortal(<TocPanel />, document.body)}
     </div>
   );
 }
