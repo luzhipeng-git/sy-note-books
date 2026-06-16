@@ -21,7 +21,16 @@ export async function saveDrawnix(
 }
 
 export async function loadDrawnix(path: string): Promise<DrawnixFileData | null> {
-  const raw = await invokeIPC<string>('read_file', { path });
+  let raw: string;
+  try {
+    raw = await invokeIPC<string>('read_file', { path });
+  } catch (err) {
+    // read_file rejects on missing files or rejected traversal paths.
+    // Surface the reason in the console so re-edit failures aren't silent,
+    // but return null so the caller can bail out gracefully.
+    console.error('读取白板数据失败:', path, err);
+    return null;
+  }
   if (!raw) return null;
   try {
     const data = JSON.parse(raw);

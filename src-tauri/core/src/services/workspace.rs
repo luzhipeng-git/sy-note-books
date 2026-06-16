@@ -280,6 +280,15 @@ pub fn create_workspace(
 ) -> Result<WorkspaceInfo, String> {
     fs::create_dir_all(path).map_err(|e| format!("创建目录失败: {}", e))?;
 
+    // Canonicalize so the returned root path matches open_workspace's format:
+    // resolves symlinks, strips `..` segments, and yields a consistent absolute
+    // path. Downstream code builds asset paths from this root and reads them
+    // back via read_file (which rejects `..`), so a non-canonical root would
+    // break whiteboard re-edit and other asset reads.
+    let canonical = path
+        .canonicalize()
+        .map_err(|e| format!("路径规范化失败: {e}"))?;
+
     let lang = language.unwrap_or("zh-CN");
 
     let json_content = serde_json::json!({
@@ -292,7 +301,7 @@ pub fn create_workspace(
     });
     let json_str =
         serde_json::to_string_pretty(&json_content).map_err(|e| format!("序列化失败: {}", e))?;
-    fs::write(path.join("workspace.json"), json_str)
+    fs::write(canonical.join("workspace.json"), json_str)
         .map_err(|e| format!("写入 workspace.json 失败: {}", e))?;
 
     let summary_content = format!(
@@ -302,14 +311,14 @@ pub fn create_workspace(
          # {}\n",
         title
     );
-    fs::write(path.join("SUMMARY.md"), summary_content)
+    fs::write(canonical.join("SUMMARY.md"), summary_content)
         .map_err(|e| format!("写入 SUMMARY.md 失败: {}", e))?;
 
-    fs::create_dir_all(path.join("assets"))
+    fs::create_dir_all(canonical.join("assets"))
         .map_err(|e| format!("创建 assets 目录失败: {}", e))?;
 
     Ok(WorkspaceInfo {
-        root_path: path.to_string_lossy().to_string(),
+        root_path: canonical.to_string_lossy().to_string(),
         workspace_meta: WorkspaceMeta {
             title: title.to_string(),
             author: author.to_string(),

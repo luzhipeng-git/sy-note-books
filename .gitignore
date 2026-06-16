@@ -15,3 +15,4 @@ cicd/git-access-token
 e2e-tests/reports/
 e2e-tests/screenshots/
 .docker-deps-hash
+test-docs-ws/

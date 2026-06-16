@@ -818,7 +818,33 @@ pub fn svg_to_png_bytes(svg_data: &[u8]) -> Option<Vec<u8>> {
 
     let transform = resvg::tiny_skia::Transform::from_scale(scale as f32, scale as f32);
     resvg::render(&tree, transform, &mut pixmap.as_mut());
-    pixmap.encode_png().ok()
+
+    // Encode as an *RGB* PNG (no alpha channel).
+    //
+    // IronPress embeds a PNG by passing its raw zlib IDAT + PNG-predictor
+    // straight into the PDF and declares the colour space from the channel
+    // count. For an RGBA (4-channel) PNG it still writes /ColorSpace
+    // /DeviceRGB (3 channels), so the PDF reader mis-parses the 4-channel
+    // filtered data — channels shift and the image renders as a garbled
+    // black field. Since we already composited onto opaque white there is
+    // no transparency to preserve, so dropping the alpha channel produces a
+    // clean 3-channel RGB PNG that embeds correctly.
+    let rgba = pixmap.data();
+    let mut rgb = Vec::with_capacity(rgba.len() / 4 * 3);
+    let mut i = 0;
+    while i + 3 < rgba.len() {
+        rgb.push(rgba[i]);
+        rgb.push(rgba[i + 1]);
+        rgb.push(rgba[i + 2]);
+        i += 4;
+    }
+    let mut out = Vec::new();
+    let encoder = image::codecs::png::PngEncoder::new(&mut out);
+    use image::ImageEncoder as _;
+    encoder
+        .write_image(&rgb, pw, ph, image::ExtendedColorType::Rgb8)
+        .ok()?;
+    Some(out)
 }
 
 /// Detect and de-duplicate the repeated sub-paths that drawnix's freehand
