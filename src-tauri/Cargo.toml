@@ -4,7 +4,7 @@ resolver = "2"
 
 [package]
 name = "sy-note-books"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
 
 [lib]
@@ -21,3 +21,10 @@ tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sy-note-books-core = { path = "core" }
+
+# Patch IronPress to fix a bug where <img>/<svg> nested inside block elements
+# (e.g. <p>) were silently dropped during text-run collection, causing all
+# images to disappear from exported PDFs. The vendored copy routes replaced
+# elements through flatten_element instead. See vendor/ironpress/README.patch.md.
+[patch.crates-io]
+ironpress = { path = "vendor/ironpress" }

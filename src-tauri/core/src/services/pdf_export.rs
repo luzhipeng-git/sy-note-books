@@ -91,6 +91,19 @@ mod tests {
         assert!(data.len() > 500, "PDF should be non-trivial, got {} bytes", data.len());
     }
 
+    /// Assert that a generated PDF actually embeds an image (contains an image
+    /// XObject resource). This guards against regressions where the layout
+    /// engine silently drops `<img>` elements (e.g. when nested in `<p>`).
+    fn assert_pdf_contains_image(path: &Path) {
+        let data = fs::read(path).unwrap();
+        let s = String::from_utf8_lossy(&data);
+        assert!(
+            s.contains("/Image") || s.contains("/XObject"),
+            "PDF should embed at least one image XObject, but none found ({} bytes)",
+            data.len()
+        );
+    }
+
     #[test]
     fn export_file_as_pdf_basic_markdown() {
         let tmp = TempDir::new().unwrap();
@@ -270,6 +283,53 @@ mod tests {
         let result = export_file_as_pdf(&ws, "image.md", &out, None, None);
         assert!(result.is_ok(), "export failed: {:?}", result);
         assert_valid_pdf(&out);
+        // Regression: pulldown-cmark wraps <img> in <p>, so the image must
+        // actually be embedded in the PDF (not silently dropped).
+        assert_pdf_contains_image(&out);
+    }
+
+    /// Regression test for the whiteboard image flow.
+    ///
+    /// Whiteboards save images as SVG files referenced via relative paths
+    /// `./assets/<doc>-img-<NNN>.svg` (see buildMarkdownRef in
+    /// whiteboardService.ts). pulldown-cmark wraps the resulting `<img>` in a
+    /// `<p>`, which — before the IronPress layout patch — caused the image to
+    /// be silently dropped during text-run collection. This test ensures the
+    /// SVG→PNG conversion succeeds and the image is embedded in the PDF.
+    #[test]
+    fn export_file_as_pdf_whiteboard_svg_image() {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path().join("ws");
+        setup_test_workspace(&ws);
+
+        // Chapter directory with an assets/ subdir holding an SVG image.
+        let ch = ws.join("ch1");
+        let assets = ch.join("assets");
+        fs::create_dir_all(&assets).unwrap();
+        let svg = r##"<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">
+  <rect x="0" y="0" width="200" height="100" fill="#ff0000"/>
+  <rect x="10" y="10" width="80" height="80" fill="#0000ff"/>
+</svg>"##;
+        fs::write(assets.join("doc-img-001.svg"), svg).unwrap();
+
+        // Markdown references the SVG exactly like the whiteboard does.
+        let md = "# 白板图\n\n![img-001](./assets/doc-img-001.svg)\n\n文字。\n";
+        fs::write(ch.join("index.md"), md).unwrap();
+
+        // Verify SVG→PNG conversion succeeds.
+        let svg_bytes = fs::read(assets.join("doc-img-001.svg")).unwrap();
+        assert!(super::export::svg_to_png_bytes(&svg_bytes).is_some(), "SVG→PNG conversion should succeed");
+
+        // Verify the generated HTML embeds the image as a data URI.
+        let html = super::export::export_pdf_file_html(&ws, "ch1/index.md", None, None).unwrap();
+        assert!(html.contains("data:image/png;base64,"), "HTML should embed converted PNG as data URI");
+
+        // Verify the PDF actually contains the image.
+        let out = tmp.path().join("output.pdf");
+        export_file_as_pdf(&ws, "ch1/index.md", &out, None, None).unwrap();
+        assert_valid_pdf(&out);
+        assert_pdf_contains_image(&out);
     }
 
     #[test]
