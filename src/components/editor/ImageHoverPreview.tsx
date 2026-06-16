@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { parseImagePath } from '../../services/whiteboardService';
 
 interface PreviewState {
   src: string;
@@ -15,6 +16,13 @@ export function useImageHoverPreview(containerRef: React.RefObject<HTMLElement |
     if (target.tagName !== 'IMG') return;
 
     const img = target as HTMLImageElement;
+
+    // Don't show the hover preview for whiteboard (drawnix) images — those
+    // are re-edited by clicking, and the floating preview popup below them
+    // gets in the way / is mistaken for a broken interaction.
+    const localSrc = img.getAttribute('data-local-src') ?? img.getAttribute('src') ?? '';
+    if (parseImagePath(localSrc)) return;
+
     const rect = img.getBoundingClientRect();
 
     if (timerRef.current) clearTimeout(timerRef.current);
