@@ -55,7 +55,7 @@
       "icons/icon.icns"
     ],
     "createUpdaterArtifacts": true,
-    "copyright": "",
+    "copyright": "Copyright (c) 2026 luzhipeng-git (MIT License)",
     "category": "Productivity",
     "shortDescription": "书昀笔记电子书 — 面向技术写作者的桌面笔记应用",
     "longDescription": "书昀笔记电子书提供 workspace 级知识管理、Typora 级 Markdown 编辑、白板画图、一键导出。",
